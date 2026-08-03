@@ -23,11 +23,11 @@ import {
 import {
   checkRStatus,
   installPstom,
+  getInstallState,
+  installLogEmitter,
   runOm,
   runPdyn,
   runDynplot,
-  getInstallState,
-  installLogEmitter,
 } from "../../lib/rRunner.js";
 
 const router: IRouter = Router();
@@ -50,10 +50,77 @@ const upload = multer({
 // ── GET /r/status ─────────────────────────────────────────────────────────────
 router.get("/r/status", async (_req, res): Promise<void> => {
   const status = await checkRStatus();
-
   const state = getInstallState();
+  res.json({ ...status, installState: state });
+});
 
-  const state = getInstallState();
+// ── POST /r/install ───────────────────────────────────────────────────────────
+// Trigger pstom installation (long-running; client should poll /r/status or stream /r/install/stream)
+router.post("/r/install", async (req, res): Promise<void> => {
+  req.log.info("Starting pstom installation");
+  // Fire-and-forget
+  installPstom().then((result) => {
+    req.log.info({ ok: result.ok }, "pstom install finished");
+  });
+  res.json({ message: "Installation started. Poll /api/r/status for updates." });
+});
+
+// ── GET /r/install/stream ─────────────────────────────────────────────────────
+// Server-Sent Events stream of installation log output
+router.get("/r/install/stream", (req, res): void => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  // Send current buffered output immediately
+  const currentState = getInstallState();
+  if (currentState.output) {
+    res.write(`data: ${JSON.stringify({ type: "log", text: currentState.output })}\n\n`);
+  }
+  if (currentState.status === "success" || currentState.status === "failed") {
+    res.write(
+      `data: ${JSON.stringify({ type: "done", ok: currentState.status === "success" })}\n\n`,
+    );
+    res.end();
+    return;
+  }
+
+  const heartbeat = setInterval(() => {
+    res.write(`: heartbeat\n\n`);
+  }, 15_000);
+
+  const onLog = (text: string) => {
+    res.write(`data: ${JSON.stringify({ type: "log", text })}\n\n`);
+  };
+
+  const onDone = ({ ok }: { ok: boolean }) => {
+    clearInterval(heartbeat);
+    res.write(`data: ${JSON.stringify({ type: "done", ok })}\n\n`);
+    res.end();
+    installLogEmitter.off("log", onLog);
+    installLogEmitter.off("done", onDone);
+  };
+
+  installLogEmitter.on("log", onLog);
+  installLogEmitter.on("done", onDone);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    installLogEmitter.off("log", onLog);
+    installLogEmitter.off("done", onDone);
+  });
+});
+
+// ── POST /r/upload ─────────────────────────────────────────────────────────────
+router.post(
+  "/r/upload",
+  upload.single("file"),
+  async (req, res): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ error: "No file provided" });
+      return;
+    }
     const { fileId, filePath } = await saveFile(
       req.file.buffer,
       req.file.originalname || "upload.rds",
@@ -93,41 +160,42 @@ router.get("/r/files/:fileId", (req, res): void => {
 
 // ── POST /r/om ────────────────────────────────────────────────────────────────
 router.post("/r/om", async (req, res): Promise<void> => {
-  const parsed = RunDynplotBody.safeParse(req.body);
+  const parsed = RunOmBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
   const { ages, samples, time, shape, seeds } = parsed.data;
 
-  const session = deleteSessionRecord(params.data.id);
+  const session = createSession({
+    type: "om",
+    status: "running",
+    args: { ages, samples, time, shape, seeds },
+    outputFileId: null,
+    plotId: null,
+    logs: null,
+    error: null,
+    inputFileId: null,
+  });
 
-  req.log.info({ sessionId: session.id }, "Running pdyn");
+  req.log.info({ sessionId: session.id }, "Running om");
 
   try {
-    const { outputFileId, logs } = await runPdyn(fileId, {
-      stochastic,
-      iterations,
-      time,
-      initialDepletion,
-      verbose,
-      useRmax,
-    });
-
+    const { outputFileId, logs } = await runOm({ ages, samples, time, shape, seeds });
     updateSession(session.id, { status: "success", outputFileId, logs });
-    req.log.info({ sessionId: session.id, outputFileId }, "pdyn succeeded");
+    req.log.info({ sessionId: session.id, outputFileId }, "om succeeded");
     res.json({ ...session, status: "success", outputFileId, logs });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     updateSession(session.id, { status: "error", error });
-    req.log.error({ sessionId: session.id, error }, "pdyn failed");
+    req.log.error({ sessionId: session.id, error }, "om failed");
     res.status(500).json({ error });
   }
 });
 
-// ── POST /r/dynplot ────────────────────────────────────────────────────────────
-router.post("/r/dynplot", async (req, res): Promise<void> => {
-  const parsed = RunDynplotBody.safeParse(req.body);
+// ── POST /r/pdyn ───────────────────────────────────────────────────────────────
+router.post("/r/pdyn", async (req, res): Promise<void> => {
+  const parsed = RunPdynBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -140,7 +208,16 @@ router.post("/r/dynplot", async (req, res): Promise<void> => {
     return;
   }
 
-  const session = deleteSessionRecord(params.data.id);
+  const session = createSession({
+    type: "pdyn",
+    status: "running",
+    args: { fileId, stochastic, iterations, time, initialDepletion, verbose, useRmax },
+    outputFileId: null,
+    plotId: null,
+    logs: null,
+    error: null,
+    inputFileId: fileId,
+  });
 
   req.log.info({ sessionId: session.id }, "Running pdyn");
 
@@ -184,7 +261,16 @@ router.post("/r/dynplot", async (req, res): Promise<void> => {
     return;
   }
 
-  const session = deleteSessionRecord(params.data.id);
+  const session = createSession({
+    type: "dynplot",
+    status: "running",
+    args: { sessionId, pars },
+    outputFileId: null,
+    plotId: null,
+    logs: null,
+    error: null,
+    inputFileId: pdynSession.outputFileId,
+  });
 
   req.log.info({ sessionId: session.id }, "Running dynplot");
 
@@ -208,12 +294,12 @@ router.get("/r/sessions", (_req, res): void => {
 
 // ── GET /r/sessions/:id ────────────────────────────────────────────────────────
 router.get("/r/sessions/:id", (req, res): void => {
-  const params = DeleteSessionParams.safeParse(req.params);
+  const params = GetSessionParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const session = deleteSessionRecord(params.data.id);
+  const session = getSession(params.data.id);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -242,19 +328,3 @@ router.delete("/r/sessions/:id", async (req, res): Promise<void> => {
 });
 
 export default router;
-
-  const heartbeat = setInterval(() => {
-    res.write(`: heartbeat\n\n`);
-  }, 15_000);
-
-  const onDone = ({ ok }: { ok: boolean }) => {
-    clearInterval(heartbeat);
-    res.write(`data: ${JSON.stringify({ type: "done", ok })}\n\n`);
-    res.end();
-    installLogEmitter.off("log", onLog);
-    installLogEmitter.off("done", onDone);
-  };
-
-  const onLog = (text: string) => {
-    res.write(`data: ${JSON.stringify({ type: "log", text })}\n\n`);
-  };
