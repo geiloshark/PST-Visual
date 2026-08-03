@@ -66,20 +66,20 @@ ui <- fluidPage(
             p("Creates an ", code("om"), " S4 object using ", code("pstom::om()"), "."),
             hr(),
             div(class = "section-label", "Ages *"),
-            textInput("om_ages", label = NULL, value = "1:20",
-                      placeholder = "e.g. 1:20 or c(1,2,3,4,5)"),
-            div(class = "helper-text", "Any R integer vector expression"),
+            textInput("om_ages", label = NULL, value = "0:20",
+                      placeholder = "e.g. 0:20 or c(0,1,2,3,4,5)"),
+            div(class = "helper-text", "R integer vector expression — minimum age must be 0"),
             br(),
             fluidRow(
               column(6,
-                div(class = "section-label", "Samples"),
-                numericInput("om_samples", label = NULL, value = NA, min = 1, step = 1),
-                div(class = "helper-text", "Monte Carlo samples")
+                div(class = "section-label", "Samples *"),
+                numericInput("om_samples", label = NULL, value = 100, min = 1, step = 1),
+                div(class = "helper-text", "Monte Carlo samples (required)")
               ),
               column(6,
-                div(class = "section-label", "Time (years)"),
-                numericInput("om_time", label = NULL, value = NA, min = 1, step = 1),
-                div(class = "helper-text", "Time horizon")
+                div(class = "section-label", "Time (years) *"),
+                numericInput("om_time", label = NULL, value = 100, min = 1, step = 1),
+                div(class = "helper-text", "Time horizon (required)")
               )
             ),
             fluidRow(
@@ -172,9 +172,9 @@ ui <- fluidPage(
             h4("Plot parameters"),
             p("Uses the pdyn output from tab 2."),
             div(class = "section-label", "Parameters (pars)"),
-            textInput("dynplot_pars", label = NULL, value = "N,B,F",
-                      placeholder = "e.g. N,B,F"),
-            div(class = "helper-text", "Comma-separated (N: Numbers, B: Biomass, F: Fishing Mortality)"),
+            textInput("dynplot_pars", label = NULL, value = "depletion",
+                      placeholder = "e.g. depletion,captures,harvest_rate"),
+            div(class = "helper-text", "Comma-separated: depletion, captures, harvest_rate"),
             br(),
             actionButton("run_dynplot", "Generate Plot", class = "btn-primary btn-block",
                          icon = icon("chart-line")),
@@ -220,11 +220,11 @@ server <- function(input, output, session) {
     if (ages_expr == "") { rv$om_log <- "Error: Ages field is required."; rv$om_ok <- FALSE; return() }
 
     result <- tryCatch({
-      om_args <- list(ages = eval(parse(text = ages_expr)))
-      if (!is.na(input$om_samples) && !is.null(input$om_samples))
-        om_args$samples <- as.integer(input$om_samples)
-      if (!is.na(input$om_time)    && !is.null(input$om_time))
-        om_args$time    <- input$om_time
+      om_args <- list(
+        ages    = eval(parse(text = ages_expr)),
+        samples = as.integer(if (!is.na(input$om_samples) && !is.null(input$om_samples)) input$om_samples else 100),
+        time    = if (!is.na(input$om_time) && !is.null(input$om_time)) input$om_time else 100
+      )
       if (!is.na(input$om_shape)   && !is.null(input$om_shape))
         om_args$shape   <- input$om_shape
       if (!is.na(input$om_seed)    && !is.null(input$om_seed))

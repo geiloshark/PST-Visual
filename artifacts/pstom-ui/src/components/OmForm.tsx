@@ -10,9 +10,9 @@ export function OmForm() {
   const queryClient = useQueryClient();
   const runOm = useRunOm();
 
-  const [ages, setAges] = useState('1:20');
-  const [samples, setSamples] = useState<string>('');
-  const [time, setTime] = useState<string>('');
+  const [ages, setAges] = useState('0:20');
+  const [samples, setSamples] = useState<string>('100');
+  const [time, setTime] = useState<string>('100');
   const [shape, setShape] = useState<string>('');
   const [seeds, setSeeds] = useState<string>('');
 
@@ -65,11 +65,11 @@ export function OmForm() {
                 id="ages"
                 value={ages}
                 onChange={(e) => setAges(e.target.value)}
-                placeholder="e.g. 1:20 or c(1,2,3,4,5)"
+                placeholder="e.g. 0:20 or c(0,1,2,3,4,5)"
                 disabled={runOm.isPending}
                 className="font-mono"
               />
-              <p className="text-[10px] text-muted-foreground">Any R integer vector expression</p>
+              <p className="text-[10px] text-muted-foreground">R integer vector expression — minimum age must be 0</p>
             </div>
 
             <Separator />

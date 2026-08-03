@@ -11,7 +11,7 @@ export function DynplotForm() {
   const runDynplot = useRunDynplot();
 
   const [sessionId, setSessionId] = useState('');
-  const [pars, setPars] = useState('N,B,F');
+  const [pars, setPars] = useState('depletion');
 
   const [lastPlotId, setLastPlotId] = useState<string | null>(null);
 
@@ -75,11 +75,11 @@ export function DynplotForm() {
                 id="pars" 
                 value={pars} 
                 onChange={(e) => setPars(e.target.value)} 
-                placeholder="e.g. N,B,F"
+                placeholder="e.g. depletion,captures,harvest_rate"
                 disabled={runDynplot.isPending}
                 className="font-mono"
               />
-              <p className="text-[10px] text-muted-foreground">Comma-separated list (N: Numbers, B: Biomass, F: Fishing Mortality)</p>
+              <p className="text-[10px] text-muted-foreground">Comma-separated: depletion, captures, harvest_rate</p>
             </div>
           </div>
 

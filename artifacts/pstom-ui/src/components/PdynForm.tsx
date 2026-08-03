@@ -13,7 +13,7 @@ export function PdynForm() {
   const [stochastic, setStochastic] = useState(true);
   const [iterations, setIterations] = useState(1000);
   const [time, setTime] = useState(100);
-  const [initialDepletion, setInitialDepletion] = useState(0.1);
+  const [initialDepletion, setInitialDepletion] = useState(1.0);
   const [useRmax, setUseRmax] = useState(true);
   const [verbose, setVerbose] = useState(false);
 

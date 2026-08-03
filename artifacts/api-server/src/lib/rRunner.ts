@@ -199,8 +199,9 @@ export async function runOm(args: {
   const libPath = path.join(os.homedir(), "R-libs");
   const outputTmp = path.join(os.tmpdir(), `om_out_${Date.now()}.rds`);
 
-  const samples = args.samples != null ? String(Math.round(args.samples)) + "L" : "NULL";
-  const time = args.time != null ? String(args.time) : "NULL";
+  // samples and time are required by the om S4 initialiser — default to 100 if omitted
+  const samples = args.samples != null ? String(Math.round(args.samples)) + "L" : "100L";
+  const time = args.time != null ? String(args.time) : "100";
   const shape = args.shape != null ? String(args.shape) : "NULL";
   const seeds = args.seeds != null ? String(Math.round(args.seeds)) + "L" : "NULL";
 
