@@ -1,0 +1,2 @@
+- [pstom source facts](pstom-source-facts.md) — om requires ages≥0, samples+time required; pdyn depletion default 1.0; dynplot valid pars: depletion/captures/harvest_rate
+- [GitHub push pattern for PST-Visual](github-push-pattern.md) — checking out origin/main wipes Replit artifacts; always push then restore x3 artifacts immediately
