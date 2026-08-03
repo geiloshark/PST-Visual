@@ -6,8 +6,8 @@ interface WorkspaceContextType {
   setUploadedFile: (id: string | null, filename: string | null) => void;
   selectedPdynSessionId: string | null;
   setSelectedPdynSessionId: (id: string | null) => void;
-  activeTab: "pdyn" | "dynplot";
-  setActiveTab: (tab: "pdyn" | "dynplot") => void;
+  activeTab: "om" | "pdyn" | "dynplot";
+  setActiveTab: (tab: "om" | "pdyn" | "dynplot") => void;
   activeOutputSessionId: string | null;
   setActiveOutputSessionId: (id: string | null) => void;
 }
@@ -18,7 +18,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
   const [selectedPdynSessionId, setSelectedPdynSessionId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"pdyn" | "dynplot">("pdyn");
+  const [activeTab, setActiveTab] = useState<"om" | "pdyn" | "dynplot">("om");
   const [activeOutputSessionId, setActiveOutputSessionId] = useState<string | null>(null);
 
   const setUploadedFile = (id: string | null, filename: string | null) => {

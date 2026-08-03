@@ -106,6 +106,52 @@ cat("INSTALL_COMPLETE\\n")
   return runRCode(code, 600_000); // 10 min timeout for compilation
 }
 
+export async function runOm(args: {
+  ages: string;
+  samples?: number | null;
+  time?: number | null;
+  shape?: number | null;
+  seeds?: number | null;
+}): Promise<{ outputFileId: string; logs: string }> {
+  const libPath = path.join(os.homedir(), "R-libs");
+  const outputTmp = path.join(os.tmpdir(), `om_out_${Date.now()}.rds`);
+
+  const samples = args.samples != null ? String(Math.round(args.samples)) + "L" : "NULL";
+  const time = args.time != null ? String(args.time) : "NULL";
+  const shape = args.shape != null ? String(args.shape) : "NULL";
+  const seeds = args.seeds != null ? String(Math.round(args.seeds)) + "L" : "NULL";
+
+  // ages is an R expression string (e.g. "1:20" or "c(1,2,3)")
+  const agesExpr = args.ages.trim() || "1:20";
+
+  const code = `
+.libPaths(c("${libPath.replace(/\\/g, "\\\\")}", .libPaths()))
+library(pstom)
+
+om_args <- list(ages = as.integer(${agesExpr}))
+if (!is.null(${samples})) om_args$samples <- ${samples}
+if (!is.null(${time})) om_args$time <- ${time}
+if (!is.null(${shape})) om_args$shape <- ${shape}
+if (!is.null(${seeds})) om_args$seeds <- ${seeds}
+
+result <- do.call(om, om_args)
+
+saveRDS(result, "${outputTmp.replace(/\\/g, "\\\\")}")
+cat("OM_SUCCESS\\n")
+`;
+
+  const { ok, output } = await runRCode(code, 120_000);
+  if (!ok || !output.includes("OM_SUCCESS")) {
+    throw new Error(output || "R execution failed");
+  }
+
+  const buffer = await fs.promises.readFile(outputTmp);
+  const { fileId: outputFileId } = await saveFile(buffer, "om_output.rds");
+  fs.unlink(outputTmp, () => {});
+
+  return { outputFileId, logs: output };
+}
+
 export async function runPdyn(
   inputFileId: string,
   args: {

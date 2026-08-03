@@ -30,6 +30,32 @@ export const GetRStatusResponse = zod.object({
 
 
 /**
+ * Calls om() to create an om S4 object and saves it as an RDS file. The returned fileId can be passed directly to /r/pdyn.
+ * @summary Initialise an om S4 operating model object
+ */
+export const RunOmBody = zod.object({
+  "ages": zod.string().describe('R expression for the ages integer vector (e.g. \"1:20\" or \"c(1,2,3,4,5)\")'),
+  "samples": zod.number().nullish().describe('Number of Monte Carlo samples'),
+  "time": zod.number().nullish().describe('Time horizon (years)'),
+  "shape": zod.number().nullish().describe('Shape parameter'),
+  "seeds": zod.number().nullish().describe('Random seed for reproducibility')
+})
+
+export const RunOmResponse = zod.object({
+  "id": zod.string(),
+  "type": zod.string().describe('pdyn or dynplot'),
+  "status": zod.string().describe('success or error'),
+  "createdAt": zod.string(),
+  "args": zod.record(zod.string(), zod.unknown()).optional(),
+  "outputFileId": zod.string().nullish().describe('File ID of the saved RDS output (pdyn sessions)'),
+  "plotId": zod.string().nullish().describe('File ID of the saved PNG plot (dynplot sessions)'),
+  "logs": zod.string().nullish().describe('R stdout\/stderr output'),
+  "error": zod.string().nullish().describe('Error message if status is error'),
+  "inputFileId": zod.string().nullish().describe('File ID of the input RDS (for pdyn sessions)')
+})
+
+
+/**
  * Executes pdyn with the provided S4 object file ID and arguments. Returns a session with the saved RDS output.
  * @summary Run the pdyn function
  */

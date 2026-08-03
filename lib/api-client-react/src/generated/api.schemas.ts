@@ -18,6 +18,31 @@ export interface RStatus {
   pstomVersion?: string | null;
 }
 
+export interface OmInput {
+  /** R expression for the ages integer vector (e.g. "1:20" or "c(1,2,3,4,5)") */
+  ages: string;
+  /**
+     * Number of Monte Carlo samples
+     * @nullable
+     */
+  samples?: number | null;
+  /**
+     * Time horizon (years)
+     * @nullable
+     */
+  time?: number | null;
+  /**
+     * Shape parameter
+     * @nullable
+     */
+  shape?: number | null;
+  /**
+     * Random seed for reproducibility
+     * @nullable
+     */
+  seeds?: number | null;
+}
+
 export interface PdynInput {
   /** ID of the uploaded RDS file containing the S4 input object */
   fileId: string;

@@ -2,6 +2,7 @@ import React from 'react';
 import { WorkspaceProvider, useWorkspace } from '../WorkspaceContext';
 import { SessionHistory } from '../components/SessionHistory';
 import { FileUploader } from '../components/FileUploader';
+import { OmForm } from '../components/OmForm';
 import { PdynForm } from '../components/PdynForm';
 import { DynplotForm } from '../components/DynplotForm';
 import { OutputDisplay } from '../components/OutputDisplay';
@@ -41,11 +42,15 @@ function WorkspaceLayout() {
         <section className="w-[450px] shrink-0 flex flex-col p-6 overflow-y-auto bg-muted/20">
           <FileUploader />
           
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "om" | "pdyn" | "dynplot")} className="flex-1 flex flex-col">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
+              <TabsTrigger value="om">om</TabsTrigger>
               <TabsTrigger value="pdyn">pdyn</TabsTrigger>
               <TabsTrigger value="dynplot">dynplot</TabsTrigger>
             </TabsList>
+            <TabsContent value="om" className="flex-1 m-0 focus-visible:outline-none">
+              <OmForm />
+            </TabsContent>
             <TabsContent value="pdyn" className="flex-1 m-0 focus-visible:outline-none">
               <PdynForm />
             </TabsContent>

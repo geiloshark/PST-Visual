@@ -5,6 +5,7 @@ import path from "path";
 import {
   GetSessionParams,
   DeleteSessionParams,
+  RunOmBody,
   RunPdynBody,
   RunDynplotBody,
 } from "@workspace/api-zod";
@@ -22,6 +23,7 @@ import {
 import {
   checkRStatus,
   installPstom,
+  runOm,
   runPdyn,
   runDynplot,
 } from "../../lib/rRunner.js";
@@ -104,6 +106,41 @@ router.get("/r/files/:fileId", (req, res): void => {
     );
   }
   res.sendFile(path.resolve(filePath));
+});
+
+// ── POST /r/om ────────────────────────────────────────────────────────────────
+router.post("/r/om", async (req, res): Promise<void> => {
+  const parsed = RunOmBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const { ages, samples, time, shape, seeds } = parsed.data;
+
+  const session = createSession({
+    type: "om",
+    status: "running",
+    args: { ages, samples, time, shape, seeds },
+    outputFileId: null,
+    plotId: null,
+    logs: null,
+    error: null,
+    inputFileId: null,
+  });
+
+  req.log.info({ sessionId: session.id }, "Running om");
+
+  try {
+    const { outputFileId, logs } = await runOm({ ages, samples, time, shape, seeds });
+    updateSession(session.id, { status: "success", outputFileId, logs });
+    req.log.info({ sessionId: session.id, outputFileId }, "om succeeded");
+    res.json({ ...session, status: "success", outputFileId, logs });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    updateSession(session.id, { status: "error", error });
+    req.log.error({ sessionId: session.id, error }, "om failed");
+    res.status(500).json({ error });
+  }
 });
 
 // ── POST /r/pdyn ───────────────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ import type {
   DynplotInput,
   ErrorResult,
   HealthStatus,
+  OmInput,
   PdynInput,
   RStatus,
   Session
@@ -210,6 +211,78 @@ export function useGetRStatus<TData = Awaited<ReturnType<typeof getRStatus>>, TE
 
 
 
+
+export const getRunOmUrl = () => {
+
+
+
+
+  return `/api/r/om`
+}
+
+/**
+ * Calls om() to create an om S4 object and saves it as an RDS file. The returned fileId can be passed directly to /r/pdyn.
+ * @summary Initialise an om S4 operating model object
+ */
+export const runOm = async (omInput: OmInput, options?: Parameters<typeof customFetch>[1]): Promise<Session> => {
+
+  return customFetch<Session>(getRunOmUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(omInput)
+  }
+);}
+
+
+
+
+
+export const getRunOmMutationOptions = <TError = ErrorType<ErrorResult>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runOm>>, TError,{data: BodyType<OmInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runOm>>, TError,{data: BodyType<OmInput>}, TContext> => {
+
+const mutationKey = ['runOm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runOm>>, {data: BodyType<OmInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  runOm(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunOmMutationResult = NonNullable<Awaited<ReturnType<typeof runOm>>>
+    export type RunOmMutationBody = BodyType<OmInput>
+    export type RunOmMutationError = ErrorType<ErrorResult>
+
+    /**
+ * @summary Initialise an om S4 operating model object
+ */
+export const useRunOm = <TError = ErrorType<ErrorResult>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runOm>>, TError,{data: BodyType<OmInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runOm>>,
+        TError,
+        {data: BodyType<OmInput>},
+        TContext
+      > => {
+      return useMutation(getRunOmMutationOptions(options));
+    }
 
 export const getRunPdynUrl = () => {
 

@@ -9,6 +9,7 @@
 export * from './dynplotInput';
 export * from './errorResult';
 export * from './healthStatus';
+export * from './omInput';
 export * from './pdynInput';
 export * from './rStatus';
 export * from './session';
