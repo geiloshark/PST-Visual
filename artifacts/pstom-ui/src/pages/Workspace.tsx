@@ -7,11 +7,16 @@ import { PdynForm } from '../components/PdynForm';
 import { DynplotForm } from '../components/DynplotForm';
 import { OutputDisplay } from '../components/OutputDisplay';
 import { RStatusBadge } from '../components/RStatusBadge';
+import { InstallPanel } from '../components/InstallPanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { FlaskConical } from 'lucide-react';
+import { useGetRStatus } from '@workspace/api-client-react';
 
 function WorkspaceLayout() {
   const { activeTab, setActiveTab } = useWorkspace();
+  const { data: rStatus } = useGetRStatus();
+
+  const pstomReady = rStatus?.rAvailable && rStatus?.pstomInstalled;
 
   return (
     <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">
@@ -39,9 +44,14 @@ function WorkspaceLayout() {
         </aside>
 
         {/* Pane 2: Tools / Forms */}
-        <section className="w-[450px] shrink-0 flex flex-col p-6 overflow-y-auto bg-muted/20">
+        <section className="w-[450px] shrink-0 flex flex-col p-6 overflow-y-auto bg-muted/20 gap-6">
+          {/* Show the install panel when pstom isn't available yet */}
+          {rStatus && !pstomReady && rStatus.rAvailable && (
+            <InstallPanel rAvailable={rStatus.rAvailable} />
+          )}
+
           <FileUploader />
-          
+
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "om" | "pdyn" | "dynplot")} className="flex-1 flex flex-col">
             <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger value="om">om</TabsTrigger>

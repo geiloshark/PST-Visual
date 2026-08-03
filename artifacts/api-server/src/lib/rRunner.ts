@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import EventEmitter from "events";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -11,15 +12,31 @@ export interface RStatus {
   pstomVersion: string | null;
 }
 
+export interface InstallState {
+  status: "idle" | "running" | "success" | "failed";
+  output: string;
+  startedAt: number | null;
+  finishedAt: number | null;
+}
 /** Run an R script file and return stdout+stderr combined */
-function runRScript(scriptPath: string, timeoutMs = 120_000): Promise<{ ok: boolean; output: string }> {
+function runRScript(
+  scriptPath: string,
+  timeoutMs = 120_000,
+): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolve) => {
     const proc = spawn("Rscript", ["--vanilla", scriptPath], {
-      env: { ...process.env, R_LIBS_USER: process.env.R_LIBS_USER ?? path.join(os.homedir(), "R-libs") },
+      env: {
+        ...process.env,
+        R_LIBS_USER: process.env.R_LIBS_USER ?? path.join(os.homedir(), "R-libs"),
+      },
     });
     let output = "";
-    proc.stdout.on("data", (d: Buffer) => { output += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { output += d.toString(); });
+    proc.stdout.on("data", (d: Buffer) => {
+      output += d.toString();
+    });
+    proc.stderr.on("data", (d: Buffer) => {
+      output += d.toString();
+    });
     const timer = setTimeout(() => {
       proc.kill("SIGTERM");
       resolve({ ok: false, output: output + "\nTIMED OUT after " + timeoutMs / 1000 + "s" });
@@ -41,7 +58,10 @@ async function runRCode(
   timeoutMs?: number,
 ): Promise<{ ok: boolean; output: string }> {
   const tmpDir = os.tmpdir();
-  const scriptPath = path.join(tmpDir, `pstom_${Date.now()}_${Math.random().toString(36).slice(2)}.R`);
+  const scriptPath = path.join(
+    tmpDir,
+    `pstom_${Date.now()}_${Math.random().toString(36).slice(2)}.R`,
+  );
   try {
     await fs.promises.writeFile(scriptPath, rCode);
     return await runRScript(scriptPath, timeoutMs);
@@ -78,8 +98,19 @@ cat(paste0("R_VERSION:", R.version$major, ".", R.version$minor, "\\n"))
 }
 
 export async function installPstom(): Promise<{ ok: boolean; output: string }> {
+  // Prevent concurrent installs
+  if (_installState.status === "running") {
+    return { ok: false, output: "Installation already in progress" };
+  }
+
+  _installState.status = "running";
+  _installState.output = "";
+  _installState.startedAt = Date.now();
+  _installState.finishedAt = null;
+
   const libPath = path.join(os.homedir(), "R-libs");
   fs.mkdirSync(libPath, { recursive: true });
+
   const code = `
 .libPaths(c("${libPath.replace(/\\/g, "\\\\")}", .libPaths()))
 options(repos = c(CRAN = "https://cloud.r-project.org"))
@@ -103,7 +134,59 @@ remotes::install_github("geiloshark/PST-Visual", subdir = "pstom",
   dependencies = TRUE, upgrade = "never")
 cat("INSTALL_COMPLETE\\n")
 `;
-  return runRCode(code, 600_000); // 10 min timeout for compilation
+
+  const tmpDir = os.tmpdir();
+  const scriptPath = path.join(tmpDir, `pstom_install_${Date.now()}.R`);
+  await fs.promises.writeFile(scriptPath, code);
+
+  return new Promise((resolve) => {
+    const proc = spawn("Rscript", ["--vanilla", scriptPath], {
+      env: {
+        ...process.env,
+        R_LIBS_USER: libPath,
+      },
+    });
+
+    const appendOutput = (text: string) => {
+      _installState.output += text;
+      installLogEmitter.emit("log", text);
+    };
+
+    proc.stdout.on("data", (d: Buffer) => appendOutput(d.toString()));
+    proc.stderr.on("data", (d: Buffer) => appendOutput(d.toString()));
+
+    const timer = setTimeout(() => {
+      proc.kill("SIGTERM");
+      const timeoutMsg = `\nTIMED OUT after 600s\n`;
+      appendOutput(timeoutMsg);
+      _installState.status = "failed";
+      _installState.finishedAt = Date.now();
+      installLogEmitter.emit("done", { ok: false });
+      resolve({ ok: false, output: _installState.output });
+      fs.unlink(scriptPath, () => {});
+    }, 600_000);
+
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      const ok = code === 0 && _installState.output.includes("INSTALL_COMPLETE");
+      _installState.status = ok ? "success" : "failed";
+      _installState.finishedAt = Date.now();
+      installLogEmitter.emit("done", { ok });
+      resolve({ ok, output: _installState.output });
+      fs.unlink(scriptPath, () => {});
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timer);
+      const msg = `Failed to start Rscript: ${err.message}\n`;
+      appendOutput(msg);
+      _installState.status = "failed";
+      _installState.finishedAt = Date.now();
+      installLogEmitter.emit("done", { ok: false });
+      resolve({ ok: false, output: _installState.output });
+      fs.unlink(scriptPath, () => {});
+    });
+  });
 }
 
 export async function runOm(args: {
@@ -176,7 +259,8 @@ export async function runPdyn(
   const useRmax = args.useRmax == null ? "TRUE" : args.useRmax ? "TRUE" : "FALSE";
   const iterations = args.iterations != null ? String(args.iterations) : "NULL";
   const time = args.time != null ? String(args.time) : "NULL";
-  const initialDepletion = args.initialDepletion != null ? String(args.initialDepletion) : "NULL";
+  const initialDepletion =
+    args.initialDepletion != null ? String(args.initialDepletion) : "NULL";
 
   const code = `
 .libPaths(c("${libPath.replace(/\\/g, "\\\\")}", .libPaths()))
@@ -262,4 +346,22 @@ cat("DYNPLOT_SUCCESS\\n")
   fs.unlink(plotTmp, () => {});
 
   return { plotId, logs: output };
+}
+
+const _installState: InstallState = {
+  status: "idle",
+  output: "",
+  startedAt: null,
+  finishedAt: null,
+};
+
+/** EventEmitter for real-time install log streaming.
+ *  Events:
+ *    "log"  → (text: string)          new chunk of R output
+ *    "done" → ({ ok: boolean })       installation finished
+ */
+export const installLogEmitter = new EventEmitter();
+
+export function getInstallState(): InstallState {
+  return { ..._installState };
 }

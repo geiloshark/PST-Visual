@@ -1,10 +1,20 @@
 import React from 'react';
-import { useGetRStatus } from '@workspace/api-client-react';
+import { useGetRStatus, getGetRStatusQueryKey } from '@workspace/api-client-react';
 import { Badge } from './ui/core';
 import { Activity, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export function RStatusBadge() {
-  const { data: status, isLoading, isError } = useGetRStatus();
+  const { data: status, isLoading, isError } = useGetRStatus({
+    query: {
+      queryKey: getGetRStatusQueryKey(),
+      // Poll every 5 s while pstom isn't ready so the badge goes green automatically
+      refetchInterval: (query) => {
+        const data = query.state.data;
+        if (!data) return 5_000;
+        return data.rAvailable && data.pstomInstalled ? false : 5_000;
+      },
+    },
+  });
 
   if (isLoading) {
     return (
@@ -34,7 +44,9 @@ export function RStatusBadge() {
           <span className="text-[10px]">Ready</span>
         </Badge>
         {status.pstomVersion && (
-          <span className="text-[10px] font-mono text-muted-foreground">pstom v{status.pstomVersion}</span>
+          <span className="text-[10px] font-mono text-muted-foreground">
+            pstom v{status.pstomVersion}
+          </span>
         )}
       </div>
     );
