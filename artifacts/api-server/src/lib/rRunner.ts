@@ -236,6 +236,87 @@ cat("OM_SUCCESS\\n")
   return { outputFileId, logs: output };
 }
 
+export async function inspectOmRds(fileId: string): Promise<{
+  ages: string;
+  samples: number;
+  time: number;
+  shape: number | null;
+  seeds: number | null;
+}> {
+  const inputPath = getFilePath(fileId);
+  if (!fs.existsSync(inputPath)) {
+    throw new Error(`File not found: ${fileId}`);
+  }
+
+  const libPath = path.join(os.homedir(), "R-libs");
+
+  const code = `
+.libPaths(c("${libPath.replace(/\\/g, "\\\\")}", .libPaths()))
+suppressPackageStartupMessages(library(pstom))
+
+obj <- readRDS("${inputPath.replace(/\\/g, "\\\\")}")
+if (!is(obj, "om")) stop("File does not contain an om S4 object")
+
+# Ages — express as compact R expression
+ages <- obj@ages
+if (all(is.na(ages))) {
+  ages_str <- "NA"
+} else if (length(ages) > 1 && all(diff(ages) == 1L)) {
+  ages_str <- paste0(min(ages), ":", max(ages))
+} else {
+  ages_str <- paste0("c(", paste(ages, collapse = ","), ")")
+}
+
+# Samples
+samples_val <- as.integer(obj@samples[1])
+
+# Time — number of time steps
+time_val <- length(obj@time)
+
+# Shape — first non-NA value (slot may be empty before shape() is called)
+shape_vals <- obj@shape
+shape_val <- if (length(shape_vals) > 0 && any(!is.na(shape_vals))) {
+  round(shape_vals[!is.na(shape_vals)][1], 6)
+} else NA_real_
+
+# Seeds — first non-NA value
+seeds_vals <- obj@seeds
+seeds_val <- if (length(seeds_vals) > 0 && any(!is.na(seeds_vals))) {
+  as.integer(seeds_vals[!is.na(seeds_vals)][1])
+} else NA_integer_
+
+cat(paste0("OM_AGES:", ages_str, "\\n"))
+cat(paste0("OM_SAMPLES:", samples_val, "\\n"))
+cat(paste0("OM_TIME:", time_val, "\\n"))
+if (!is.na(shape_val)) cat(paste0("OM_SHAPE:", shape_val, "\\n"))
+if (!is.na(seeds_val)) cat(paste0("OM_SEEDS:", seeds_val, "\\n"))
+cat("OM_INSPECT_SUCCESS\\n")
+`;
+
+  const { ok, output } = await runRCode(code, 30_000);
+  if (!ok || !output.includes("OM_INSPECT_SUCCESS")) {
+    throw new Error(output || "R execution failed");
+  }
+
+  const agesMatch   = output.match(/OM_AGES:(.+)/);
+  const samplesMatch = output.match(/OM_SAMPLES:(\d+)/);
+  const timeMatch   = output.match(/OM_TIME:(\d+)/);
+  const shapeMatch  = output.match(/OM_SHAPE:([\d.eE+-]+)/);
+  const seedsMatch  = output.match(/OM_SEEDS:(\d+)/);
+
+  if (!agesMatch || !samplesMatch || !timeMatch) {
+    throw new Error("Failed to parse om object slots from R output");
+  }
+
+  return {
+    ages:    agesMatch[1].trim(),
+    samples: parseInt(samplesMatch[1], 10),
+    time:    parseInt(timeMatch[1], 10),
+    shape:   shapeMatch  ? parseFloat(shapeMatch[1])  : null,
+    seeds:   seedsMatch  ? parseInt(seedsMatch[1], 10) : null,
+  };
+}
+
 export async function runPdyn(
   inputFileId: string,
   args: {

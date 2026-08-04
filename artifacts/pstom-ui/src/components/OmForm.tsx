@@ -1,14 +1,30 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useWorkspace } from '../WorkspaceContext';
 import { useRunOm, getListSessionsQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Input, Label, Separator } from './ui/core';
-import { Layers, Loader2, CheckCircle2 } from 'lucide-react';
+import { Layers, Loader2, CheckCircle2, Upload, X, AlertCircle } from 'lucide-react';
+
+interface OmSlots {
+  ages: string;
+  samples: number;
+  time: number;
+  shape: number | null;
+  seeds: number | null;
+}
+
+type UploadState =
+  | { status: 'idle' }
+  | { status: 'uploading' }
+  | { status: 'inspecting' }
+  | { status: 'loaded'; fileId: string; filename: string; slots: OmSlots }
+  | { status: 'error'; message: string };
 
 export function OmForm() {
   const { setUploadedFile, setActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const runOm = useRunOm();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [ages, setAges] = useState('0:20');
   const [samples, setSamples] = useState<string>('100');
@@ -16,8 +32,68 @@ export function OmForm() {
   const [shape, setShape] = useState<string>('');
   const [seeds, setSeeds] = useState<string>('');
 
+  const [uploadState, setUploadState] = useState<UploadState>({ status: 'idle' });
   const [lastOutputFileId, setLastOutputFileId] = useState<string | null>(null);
 
+  // ── File upload + inspect ────────────────────────────────────────────────────
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset so the same file can be re-selected after clearing
+    e.target.value = '';
+
+    setUploadState({ status: 'uploading' });
+    setLastOutputFileId(null);
+
+    try {
+      // 1. Upload
+      const formData = new FormData();
+      formData.append('file', file);
+      const uploadRes = await fetch('/api/r/upload', { method: 'POST', body: formData });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `Upload failed (${uploadRes.status})`);
+      }
+      const { fileId } = (await uploadRes.json()) as { fileId: string };
+
+      setUploadState({ status: 'inspecting' });
+
+      // 2. Inspect slots
+      const inspectRes = await fetch('/api/r/om/inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId }),
+      });
+      if (!inspectRes.ok) {
+        const err = await inspectRes.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `Inspect failed (${inspectRes.status})`);
+      }
+      const slots = (await inspectRes.json()) as OmSlots;
+
+      // 3. Populate fields
+      setAges(slots.ages);
+      setSamples(String(slots.samples));
+      setTime(String(slots.time));
+      setShape(slots.shape != null ? String(slots.shape) : '');
+      setSeeds(slots.seeds != null ? String(slots.seeds) : '');
+
+      // 4. Make available for pdyn immediately
+      setUploadedFile(fileId, file.name);
+
+      setUploadState({ status: 'loaded', fileId, filename: file.name, slots });
+    } catch (err) {
+      setUploadState({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const clearUpload = () => {
+    setUploadState({ status: 'idle' });
+  };
+
+  // ── Om initialise ────────────────────────────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!ages.trim()) return;
@@ -39,15 +115,15 @@ export function OmForm() {
           queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
           if (session.outputFileId) {
             setLastOutputFileId(session.outputFileId);
-            // Auto-populate the file for pdyn — same as uploading an .rds
             setUploadedFile(session.outputFileId, 'om_output.rds');
-            // Switch to pdyn tab
             setActiveTab('pdyn');
           }
         }
       }
     );
   };
+
+  const isWorking = runOm.isPending || uploadState.status === 'uploading' || uploadState.status === 'inspecting';
 
   return (
     <Card className="h-full flex flex-col">
@@ -56,6 +132,71 @@ export function OmForm() {
         <CardDescription>Initialise operating model S4 object</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col">
+        {/* ── Upload area ─────────────────────────────────────────────────── */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".rds,.RDS"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+
+        {uploadState.status === 'idle' && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="mb-4 w-full rounded-md border-2 border-dashed border-muted-foreground/25 px-4 py-3 text-sm text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors flex items-center justify-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Upload existing om object (.rds) to pre-fill fields
+          </button>
+        )}
+
+        {(uploadState.status === 'uploading' || uploadState.status === 'inspecting') && (
+          <div className="mb-4 w-full rounded-md border border-border px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            {uploadState.status === 'uploading' ? 'Uploading…' : 'Reading slots from object…'}
+          </div>
+        )}
+
+        {uploadState.status === 'loaded' && (
+          <div className="mb-4 rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 px-4 py-3 text-sm text-blue-800 dark:text-blue-400 flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{uploadState.filename}</p>
+              <p className="text-xs mt-0.5 text-blue-600 dark:text-blue-500">Fields populated from object slots · ready for pdyn</p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab('pdyn')}
+                className="text-xs font-medium underline underline-offset-2 hover:no-underline"
+              >
+                Go to pdyn
+              </button>
+              <button type="button" onClick={clearUpload} className="ml-2 hover:text-blue-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {uploadState.status === 'error' && (
+          <div className="mb-4 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">Upload failed</p>
+              <p className="text-xs mt-0.5 break-all">{uploadState.message}</p>
+            </div>
+            <button type="button" onClick={clearUpload} className="shrink-0 hover:opacity-70">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        <Separator className="mb-4" />
+
+        {/* ── Parameter form ───────────────────────────────────────────────── */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
           <div className="space-y-5 flex-1">
             {/* ages */}
@@ -66,13 +207,11 @@ export function OmForm() {
                 value={ages}
                 onChange={(e) => setAges(e.target.value)}
                 placeholder="e.g. 0:20 or c(0,1,2,3,4,5)"
-                disabled={runOm.isPending}
+                disabled={isWorking}
                 className="font-mono"
               />
               <p className="text-[10px] text-muted-foreground">R integer vector expression — minimum age must be 0</p>
             </div>
-
-            <Separator />
 
             <div className="grid grid-cols-2 gap-4">
               {/* samples */}
@@ -85,7 +224,7 @@ export function OmForm() {
                   value={samples}
                   onChange={(e) => setSamples(e.target.value)}
                   placeholder="default"
-                  disabled={runOm.isPending}
+                  disabled={isWorking}
                 />
                 <p className="text-[10px] text-muted-foreground">Monte Carlo samples</p>
               </div>
@@ -100,7 +239,7 @@ export function OmForm() {
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   placeholder="default"
-                  disabled={runOm.isPending}
+                  disabled={isWorking}
                 />
                 <p className="text-[10px] text-muted-foreground">Time horizon (years)</p>
               </div>
@@ -115,7 +254,7 @@ export function OmForm() {
                   value={shape}
                   onChange={(e) => setShape(e.target.value)}
                   placeholder="default"
-                  disabled={runOm.isPending}
+                  disabled={isWorking}
                 />
                 <p className="text-[10px] text-muted-foreground">Shape parameter</p>
               </div>
@@ -130,7 +269,7 @@ export function OmForm() {
                   value={seeds}
                   onChange={(e) => setSeeds(e.target.value)}
                   placeholder="random"
-                  disabled={runOm.isPending}
+                  disabled={isWorking}
                 />
                 <p className="text-[10px] text-muted-foreground">Random seed</p>
               </div>
@@ -155,7 +294,7 @@ export function OmForm() {
               type="submit"
               className="w-full"
               size="lg"
-              disabled={!ages.trim() || runOm.isPending}
+              disabled={!ages.trim() || isWorking}
             >
               {runOm.isPending ? (
                 <>
@@ -165,7 +304,7 @@ export function OmForm() {
               ) : (
                 <>
                   <Layers className="mr-2 h-4 w-4" />
-                  Initialise om
+                  {uploadState.status === 'loaded' ? 'Re-initialise om' : 'Initialise om'}
                 </>
               )}
             </Button>

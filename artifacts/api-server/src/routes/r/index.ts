@@ -28,6 +28,7 @@ import {
   runOm,
   runPdyn,
   runDynplot,
+  inspectOmRds,
 } from "../../lib/rRunner.js";
 
 const router: IRouter = Router();
@@ -156,6 +157,28 @@ router.get("/r/files/:fileId", (req, res): void => {
     );
   }
   res.sendFile(path.resolve(filePath));
+});
+
+// ── POST /r/om/inspect ───────────────────────────────────────────────────────
+// Read slot values from an uploaded om RDS and return them as JSON
+router.post("/r/om/inspect", async (req, res): Promise<void> => {
+  const { fileId } = req.body as { fileId?: unknown };
+  if (!fileId || typeof fileId !== "string") {
+    res.status(400).json({ error: "fileId is required" });
+    return;
+  }
+  if (!fileExists(fileId)) {
+    res.status(404).json({ error: "File not found" });
+    return;
+  }
+  try {
+    const slots = await inspectOmRds(fileId);
+    res.json(slots);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    req.log.error({ fileId, error }, "om inspect failed");
+    res.status(500).json({ error });
+  }
 });
 
 // ── POST /r/om ────────────────────────────────────────────────────────────────
