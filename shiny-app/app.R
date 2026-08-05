@@ -134,6 +134,7 @@ app_css <- "
   .helper-text { font-size: 11px; color: #6b7280; margin-top: 1px; margin-bottom: 6px; }
   .par-block { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 10px 4px; margin-bottom: 8px; }
   .section-divider { border-top: 1px solid #e5e7eb; margin: 12px 0 10px; }
+  .btn[disabled] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
   /* tighten inner tab nav */
   .inner-tabs .nav-tabs { margin-bottom: 10px; }
   .inner-tabs .nav-tabs > li > a { padding: 5px 10px; font-size: 12px; }
@@ -380,7 +381,7 @@ ui <- fluidPage(
             actionButton("run_om", "Initialise / Load om", class = "btn-primary btn-block",
                          icon = icon("play")),
             br(),
-            downloadButton("dl_om", "Download om RDS", class = "btn-success btn-block")
+            uiOutput("dl_om_ui")
           )
         ),
 
@@ -421,7 +422,7 @@ ui <- fluidPage(
             actionButton("run_pdyn", "Run pdyn", class = "btn-primary btn-block",
                          icon = icon("play")),
             br(),
-            downloadButton("dl_pdyn", "Download pdyn RDS", class = "btn-success btn-block")
+            uiOutput("dl_pdyn_ui")
           )
         ),
         column(8,
@@ -451,7 +452,7 @@ ui <- fluidPage(
             actionButton("run_dynplot", "Generate Plot", class = "btn-primary btn-block",
                          icon = icon("chart-line")),
             br(),
-            downloadButton("dl_plot", "Download PNG", class = "btn-success btn-block"),
+            uiOutput("dl_plot_ui"),
             hr(),
             uiOutput("dynplot_status_ui")
           )
@@ -673,6 +674,13 @@ server <- function(input, output, session) {
   })
   output$om_log <- renderText({ rv$om_log })
 
+  output$dl_om_ui <- renderUI({
+    if (is.null(rv$om_obj))
+      tags$button("Download om RDS", class = "btn btn-success btn-block", disabled = NA)
+    else
+      downloadButton("dl_om", "Download om RDS", class = "btn-success btn-block")
+  })
+
   output$dl_om <- downloadHandler(
     filename = function() paste0("om_output_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"),
     content  = function(file) {
@@ -727,6 +735,13 @@ server <- function(input, output, session) {
   })
   output$pdyn_log <- renderText({ rv$pdyn_log })
 
+  output$dl_pdyn_ui <- renderUI({
+    if (is.null(rv$pdyn_obj))
+      tags$button("Download pdyn RDS", class = "btn btn-success btn-block", disabled = NA)
+    else
+      downloadButton("dl_pdyn", "Download pdyn RDS", class = "btn-success btn-block")
+  })
+
   output$dl_pdyn <- downloadHandler(
     filename = function() paste0("pdyn_output_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"),
     content  = function(file) {
@@ -773,6 +788,13 @@ server <- function(input, output, session) {
   output$dynplot_plot <- renderPlot({
     req(rv$plot_obj)
     print(rv$plot_obj)
+  })
+
+  output$dl_plot_ui <- renderUI({
+    if (is.null(rv$plot_obj))
+      tags$button("Download PNG", class = "btn btn-success btn-block", disabled = NA)
+    else
+      downloadButton("dl_plot", "Download PNG", class = "btn-success btn-block")
   })
 
   output$dl_plot <- downloadHandler(
