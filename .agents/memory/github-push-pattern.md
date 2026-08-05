@@ -5,47 +5,65 @@ description: How to push files to origin/main (PST-Visual) without wiping Replit
 
 # GitHub push pattern for PST-Visual
 
-## The problem
-The Replit workspace (`main` branch) and `origin/main` (PST-Visual on GitHub) have **divergent histories**. When you `git checkout` a branch based on `origin/main`, the `.replit-artifact/` directories disappear from the working tree, causing Replit to immediately deregister all artifacts and kill all workflows.
+## Current state (as of 2026-08-05)
 
-**Why:** PST-Visual `main` only contains `README.md` and `pstom/`. The Replit project code lives in `artifacts/`, `lib/`, etc. — none of which exist on origin/main. Checking out origin/main removes those directories from disk.
+Local `main` and `origin/main` are now **in sync** (same linear history) after a force-push resolved the divergence. Future pushes can use `gitPush` directly from local main — no throwaway branch needed.
 
-## The correct pattern
-
-Never check out a branch based on `origin/main` in this workspace. Instead:
-
-1. Make commits on local `main` as normal.
-2. To push a specific commit to `origin/main`, use `git worktree` OR cherry-pick onto a throwaway branch **without switching the main worktree**:
-
-```bash
-# Fetch remote
-git fetch origin main
-
-# Create throwaway branch without checking it out
-git branch --no-track push-tmp origin/main
-git cherry-pick <commit-sha> --onto push-tmp  # doesn't work directly
-
-# Better: use git format-patch + git am
-git format-patch -1 HEAD -o /tmp/patches/
-git checkout -b push-tmp origin/main  # UNAVOIDABLE checkout — see below
-git am /tmp/patches/*.patch
+```javascript
+// Simple push — works when histories are in sync
+const result = await gitPush({ branch: "main" });
 ```
 
-The checkout step is unavoidable with current tooling. When it happens:
+Do NOT use `git push origin main` directly in the shell — authentication via HTTPS tokens expires; always go through the `gitPush` callback.
 
-3. Immediately push (gitPush callback), then `git checkout main`, then call `verifyAndReplaceArtifactToml` for all three artifacts to restore them.
+---
 
-## Restore sequence (run after every forced checkout)
+## Historical context (kept for reference)
+
+The Replit workspace (`main` branch) and `origin/main` previously had **divergent histories**. Checking out a branch based on `origin/main` caused Replit to deregister all artifacts and kill all workflows, because `pstom/`, `artifacts/`, etc. weren't all present on the same branch.
+
+The workaround was:
+1. `git checkout -b push-tmp origin/main`
+2. `git checkout main -- .` (brings all local files without touching files already in push-tmp)
+3. `git add -A && git commit`
+4. `gitPush({ branch: "main" })`
+5. `git checkout main && git branch -D push-tmp`
+6. Restore all three artifact tomls via `verifyAndReplaceArtifactToml`
+
+**That workaround is no longer needed** as long as histories stay in sync.
+
+---
+
+## If histories diverge again
+
+If a git operation causes divergence (you'll see "Your branch and 'origin/main' have diverged"), the safest recovery is:
 
 ```bash
-cp artifacts/pstom-ui/.replit-artifact/artifact.toml /tmp/pstom-ui.edit.toml
-cp artifacts/api-server/.replit-artifact/artifact.toml /tmp/api-server.edit.toml
-cp artifacts/mockup-sandbox/.replit-artifact/artifact.toml /tmp/mockup-sandbox.edit.toml
-# then verifyAndReplaceArtifactToml x3 in parallel
+git push origin main --force
 ```
 
-## How to apply
-Any time a task involves pushing a file change to `origin/main` (PST-Visual):
-- Plan for the artifact restore step
-- Do the push *before* switching back to local main
-- Have the three `verifyAndReplaceArtifactToml` calls ready to fire immediately after checkout
+Run this in the Replit Shell tab. This re-syncs GitHub to local main. Then check that `pstom/` is still present on GitHub — if force-push wiped it (because local main didn't have it), recover it with:
+
+```bash
+git checkout <old-commit-sha> -- pstom/
+git add pstom/ && git commit -m "Restore pstom R package source"
+# then gitPush callback
+```
+
+## Artifact restore sequence (only needed if checkout wipes artifacts)
+
+```javascript
+const root = "/home/runner/workspace";
+const [a, b, c] = await Promise.all([
+  verifyAndReplaceArtifactToml({ tempFilePath: "/tmp/pstom-ui.toml",      artifactTomlPath: `${root}/artifacts/pstom-ui/.replit-artifact/artifact.toml` }),
+  verifyAndReplaceArtifactToml({ tempFilePath: "/tmp/api-server.toml",    artifactTomlPath: `${root}/artifacts/api-server/.replit-artifact/artifact.toml` }),
+  verifyAndReplaceArtifactToml({ tempFilePath: "/tmp/mockup-sandbox.toml",artifactTomlPath: `${root}/artifacts/mockup-sandbox/.replit-artifact/artifact.toml` }),
+]);
+```
+
+Save the tomls before any checkout:
+```bash
+cp artifacts/pstom-ui/.replit-artifact/artifact.toml /tmp/pstom-ui.toml
+cp artifacts/api-server/.replit-artifact/artifact.toml /tmp/api-server.toml
+cp artifacts/mockup-sandbox/.replit-artifact/artifact.toml /tmp/mockup-sandbox.toml
+```
