@@ -675,7 +675,10 @@ server <- function(input, output, session) {
 
   output$dl_om <- downloadHandler(
     filename = function() paste0("om_output_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"),
-    content  = function(file) { req(rv$om_obj); saveRDS(rv$om_obj, file) }
+    content  = function(file) {
+      if (is.null(rv$om_obj)) return()
+      saveRDS(rv$om_obj, file)
+    }
   )
 
   # ── pdyn ────────────────────────────────────────────────────────────────────
@@ -726,7 +729,10 @@ server <- function(input, output, session) {
 
   output$dl_pdyn <- downloadHandler(
     filename = function() paste0("pdyn_output_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"),
-    content  = function(file) { req(rv$pdyn_obj); saveRDS(rv$pdyn_obj, file) }
+    content  = function(file) {
+      if (is.null(rv$pdyn_obj)) return()
+      saveRDS(rv$pdyn_obj, file)
+    }
   )
 
   # ── dynplot ─────────────────────────────────────────────────────────────────
@@ -772,7 +778,7 @@ server <- function(input, output, session) {
   output$dl_plot <- downloadHandler(
     filename = function() paste0("dynplot_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content  = function(file) {
-      req(rv$plot_obj)
+      if (is.null(rv$plot_obj)) return()
       ggplot2::ggsave(file, plot = rv$plot_obj, width = 10, height = 7, dpi = 150, bg = "white")
     }
   )
