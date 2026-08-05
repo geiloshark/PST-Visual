@@ -41,6 +41,37 @@ library(pstom)
   distribution(pars = pars_vec, density = dens, name = name)
 }
 
+# Populate Pars tab inputs from a loaded om object.
+# Called immediately when an RDS is uploaded so the user sees the values.
+# Works even while the Upload radio is active (inputs are in the DOM, just hidden).
+.populate_pars_from_om <- function(session, obj) {
+  par_map <- list(
+    s = "par_s", l = "par_l", b = "par_b", m = "par_m",
+    o = "par_o", v = "par_v", K = "par_K"
+  )
+  for (par_name in names(par_map)) {
+    prefix <- par_map[[par_name]]
+    dist   <- obj@pars[[par_name]]
+    if (!is(dist, "distribution")) next   # slot is NA / not a distribution — skip
+
+    dens <- dist@density
+
+    if (dens == "unspecified") {
+      # No parametric pars — use mean of stored values as the fixed value
+      vals <- as.numeric(dist)           # accesses the .Data slot
+      p1   <- if (length(vals) > 0 && !all(is.na(vals))) mean(vals, na.rm = TRUE) else NA_real_
+      p2   <- NA_real_
+    } else {
+      p1 <- if (length(dist@pars) >= 1) dist@pars[1] else NA_real_
+      p2 <- if (length(dist@pars) >= 2) dist@pars[2] else NA_real_
+    }
+
+    updateNumericInput(session, paste0(prefix, "_p1"), value = p1)
+    updateNumericInput(session, paste0(prefix, "_p2"), value = p2)
+    updateSelectInput( session, paste0(prefix, "_dens"), selected = dens)
+  }
+}
+
 # ── CSS helpers ───────────────────────────────────────────────────────────────
 app_css <- "
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8f9fa; }
@@ -406,6 +437,22 @@ server <- function(input, output, session) {
     plot_obj   = NULL,
     dynplot_ok = NA
   )
+
+  # ── Populate Pars inputs as soon as an om RDS is selected ───────────────────
+  observeEvent(input$om_upload, {
+    req(input$om_upload)
+    tryCatch({
+      obj <- readRDS(input$om_upload$datapath)
+      if (!is(obj, "om")) stop("not an om object")
+      .populate_pars_from_om(session, obj)
+      showNotification(
+        "Pars tab populated from uploaded om object.",
+        type = "message", duration = 4
+      )
+    }, error = function(e) {
+      # Silent — validation error shown properly when the user clicks the button
+    })
+  })
 
   # ── om ──────────────────────────────────────────────────────────────────────
   observeEvent(input$run_om, {
