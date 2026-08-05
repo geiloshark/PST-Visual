@@ -250,15 +250,17 @@ ui <- fluidPage(
                                  "Fecundity rate > 0", "lognormal"),
                     par_block_ui("par_m", "m — Age at female maturity",
                                  "Non-negative integer (years)", "normal"),
+                    div(class = "helper-text", style = "margin-bottom:10px;",
+                      icon("circle-info"), " When ", strong("s, l, b"), " and ", strong("m"),
+                      " are all supplied, ", code("load_pars()"), " is called automatically and ",
+                      code("rmax"), " is derived from them — it cannot be edited directly."
+                    ),
                     par_block_ui("par_o", "o — Age at observation",
                                  "Age at which counts are made", "normal"),
                     par_block_ui("par_v", "v — Age at selectivity",
                                  "Age at which fishing selectivity applies", "normal"),
                     par_block_ui("par_K", "K — Carrying capacity",
-                                 "Initial carrying capacity (default distribution = 1)", "normal"),
-                    par_block_ui("par_rmax", "rmax — Maximum intrinsic growth rate",
-                                 "Loaded via load_rmax(); forced to zt-normal. Par 1 = mean, Par 2 = SD.",
-                                 "zt-normal")
+                                 "Initial carrying capacity (default distribution = 1)", "normal")
                   )
                 ) # inner tabsetPanel
               )   # inner-tabs div
@@ -473,15 +475,16 @@ server <- function(input, output, session) {
         add_log("Applying pars via load_pars()…")
         obj <- load_pars(obj, pars_to_load)
         add_log("  Pars applied.")
-      }
 
-      # ── rmax ────────────────────────────────────────────────────────────────
-      rmax_dist <- .build_dist(input$par_rmax_p1, input$par_rmax_p2, "zt-normal",
-                               name = "max. intrinsic growth rate")
-      if (!is.null(rmax_dist)) {
-        add_log("Applying rmax via load_rmax()…")
-        obj <- load_rmax(obj, rmax_dist)
-        add_log("  rmax applied.")
+        # When s, l, b and m are all supplied, load_pars() calculates r
+        # automatically.  Follow up with load_rmax() (no value arg) so that
+        # rmax is derived from r — the user cannot set rmax directly.
+        slbm_provided <- all(c("s", "l", "b", "m") %in% names(pars_to_load))
+        if (slbm_provided) {
+          add_log("  s, l, b, m all provided — deriving rmax from r via load_rmax()…")
+          obj <- load_rmax(obj)   # uses object@pars$r calculated by load_pars
+          add_log("  rmax derived and loaded.")
+        }
       }
 
       add_log("\nom object ready.")
