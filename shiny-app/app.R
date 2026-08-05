@@ -155,12 +155,32 @@ ui <- fluidPage(
                       column(6,
                         div(class = "section-label", "Shape"),
                         numericInput("om_shape", label = NULL, value = NA, step = 0.1),
-                        div(class = "helper-text", "Optional shape parameter")
+                        div(class = "helper-text", "Manual shape value — ignored if Target is set")
                       ),
                       column(6,
                         div(class = "section-label", "Seed"),
                         numericInput("om_seed", label = NULL, value = NA, min = 0, step = 1),
                         div(class = "helper-text", "Optional random seed")
+                      )
+                    ),
+
+                    div(class = "section-divider"),
+                    div(class = "section-label", "Target depletion at MNPL"),
+                    div(class = "helper-text",
+                      "If supplied, ", code("shape()"), " is called after pars are loaded to estimate ",
+                      "the shape parameter from this target. Requires ", strong("s, l, b, m, v"),
+                      " to be set in the Pars tab. Overrides the manual Shape value above."
+                    ),
+                    br(),
+                    fluidRow(
+                      column(6,
+                        numericInput("om_target", label = NULL, value = NA,
+                                     min = 0.4, max = 0.9, step = 0.01),
+                        div(class = "helper-text", "Must be between 0.4 and 0.9")
+                      ),
+                      column(6,
+                        br(),
+                        checkboxInput("om_target_stochastic", "Stochastic estimation", value = FALSE)
                       )
                     )
                   ),
@@ -485,6 +505,24 @@ server <- function(input, output, session) {
           obj <- load_rmax(obj)   # uses object@pars$r calculated by load_pars
           add_log("  rmax derived and loaded.")
         }
+      }
+
+      # ── Shape via target depletion ──────────────────────────────────────────
+      target_val <- input$om_target
+      if (!is.na(target_val)) {
+        if (target_val < 0.4 || target_val > 0.9)
+          stop("Target depletion must be between 0.4 and 0.9.")
+        add_log("\nEstimating shape from target depletion = ", target_val,
+                " (stochastic = ", input$om_target_stochastic, ") via shape()…")
+        add_log("  Note: requires s, l, b, m, v to be set in Pars tab.")
+        shape_log <- capture.output({
+          obj <- shape(obj,
+                       depletion   = target_val,
+                       stochastic  = input$om_target_stochastic)
+        })
+        if (length(shape_log) > 0) add_log(paste(shape_log, collapse = "\n"))
+        add_log("  Shape estimated: mean = ", round(mean(obj@shape, na.rm = TRUE), 4),
+                ", stored in object@shape.")
       }
 
       add_log("\nom object ready.")
