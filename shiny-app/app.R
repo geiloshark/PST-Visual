@@ -257,14 +257,21 @@ ui <- fluidPage(
                     br(),
                     fluidRow(
                       column(6,
+                        div(class = "section-label", "Target depletion"),
                         numericInput("om_target", label = NULL, value = NA,
                                      min = 0.4, max = 0.9, step = 0.01),
                         div(class = "helper-text", "Must be between 0.4 and 0.9")
                       ),
                       column(6,
-                        br(),
-                        checkboxInput("om_target_stochastic", "Stochastic estimation", value = FALSE)
+                        div(class = "section-label", "Equilibrium time"),
+                        numericInput("om_shape_eq_time", label = NULL, value = 1000,
+                                     min = 1, step = 1),
+                        div(class = "helper-text", "Time steps used by ", code("shape()"))
                       )
+                    ),
+                    div(class = "helper-text", style = "margin-top: 6px;",
+                      icon("circle-info"),
+                      " Estimation of stochastic reference points is only available when running from the command line."
                     )
                   ),
 
@@ -626,14 +633,15 @@ server <- function(input, output, session) {
       if (!is.na(target_val)) {
         if (target_val < 0.4 || target_val > 0.9)
           stop("Target depletion must be between 0.4 and 0.9.")
+        eq_time <- as.integer(input$om_shape_eq_time)
         add_log("\nEstimating shape from target depletion = ", target_val,
-                " (stochastic = ", input$om_target_stochastic, ") via shape()…")
+                " (stochastic = FALSE, equilibrium time = ", eq_time, ") via shape()…")
         add_log("  Note: requires s, l, b, m, v to be set in Pars tab.")
         shape_log <- capture.output({
           obj <- shape(obj,
-                       depletion   = target_val,
-                       stochastic  = input$om_target_stochastic,
-                       time        = length(obj@time))
+                       depletion  = target_val,
+                       stochastic = FALSE,
+                       time       = eq_time)
         })
         if (length(shape_log) > 0) add_log(paste(shape_log, collapse = "\n"))
         add_log("  Shape estimated: mean = ", round(mean(obj@shape, na.rm = TRUE), 4),
