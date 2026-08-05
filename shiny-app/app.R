@@ -27,14 +27,17 @@ library(pstom)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 # Build a distribution from two par inputs + density string.
-# Returns NULL if both pars are NA/empty (i.e. user left field blank).
+# When density == "unspecified", Par 1 is treated as a fixed value and Par 2
+# is ignored. Returns NULL if Par 1 is blank (nothing to load).
 .build_dist <- function(p1, p2, dens, name = "") {
   p1 <- suppressWarnings(as.numeric(p1))
   p2 <- suppressWarnings(as.numeric(p2))
-  if (is.na(p1) && is.na(p2)) return(NULL)
-  pars_vec <- c(if (is.na(p1)) NA_real_ else p1,
-                if (is.na(p2)) NA_real_ else p2)
-  if (all(is.na(pars_vec))) return(NULL)
+  if (is.na(p1)) return(NULL)          # Par 1 always required
+  if (dens == "unspecified") {
+    # Fixed value: store as a single-element numeric distribution
+    return(distribution(value = p1, density = "unspecified", name = name))
+  }
+  pars_vec <- c(p1, if (is.na(p2)) NA_real_ else p2)
   distribution(pars = pars_vec, density = dens, name = name)
 }
 
@@ -80,15 +83,27 @@ density_choices <- c(
   "zt-normal"    = "zt-normal"
 )
 
-# Helper: one par row (par1/par2/density) inside a labelled block
+# Helper: one par row (par1/par2/density) inside a labelled block.
+# Par 2 is hidden when density == "unspecified" (Par 1 treated as fixed value).
 par_block_ui <- function(prefix, label, hint = "", default_dens = "unspecified") {
+  dens_id <- paste0(prefix, "_dens")
+  p2_cond <- paste0("input['", dens_id, "'] !== 'unspecified'")
   div(class = "par-block",
     div(class = "sub-label", label),
     if (nchar(hint) > 0) div(class = "helper-text", hint),
     fluidRow(
-      column(4, numericInput(paste0(prefix, "_p1"), "Par 1", value = NA, step = 0.01)),
-      column(4, numericInput(paste0(prefix, "_p2"), "Par 2", value = NA, step = 0.01)),
-      column(4, selectInput(paste0(prefix, "_dens"), "Density",
+      column(4, numericInput(paste0(prefix, "_p1"), "Par 1 (value)", value = NA, step = 0.01)),
+      column(4,
+        conditionalPanel(p2_cond,
+          numericInput(paste0(prefix, "_p2"), "Par 2", value = NA, step = 0.01)
+        ),
+        conditionalPanel(paste0("!(", p2_cond, ")"),
+          div(style = "padding-top:25px;",
+            span(class = "helper-text", "Fixed value — Par 2 not used")
+          )
+        )
+      ),
+      column(4, selectInput(dens_id, "Density",
                             choices = density_choices, selected = default_dens))
     )
   )
