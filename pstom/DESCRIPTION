@@ -1,7 +1,7 @@
-Package: om
+Package: pstom
 Type: Package
 Title: Operating model
-Version: 0.2.1
+Version: 3.0.1
 Date: 2026-07-29
 Author: Charles T T Edwards
 Maintainer: Charles T T Edwards <cescapecs@gmail.com>
