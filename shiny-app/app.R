@@ -651,6 +651,7 @@ server <- function(input, output, session) {
     rv$om_ok  <- result$ok
 
     if (isTRUE(result$ok)) {
+      updateRadioButtons(session, "om_source", selected = "build")
       showNotification("om object ready — switching to pdyn tab.", type = "message", duration = 4)
       updateTabsetPanel(session, "main_tabs", selected = "2 · pdyn")
     }
