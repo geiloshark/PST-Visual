@@ -214,45 +214,48 @@ export function OmForm() {
               </div>
             </div>
 
-            {/* ── Settings panel ── */}
-            {uploadState.slots.settings && (
+            {/* ── Settings panel ── always shown when loaded */}
+            {(() => {
+              const s = uploadState.slots.settings;
+              return (
               <div className="rounded-md border border-border bg-muted/30 px-4 py-3 space-y-3">
                 <p className="text-xs font-semibold text-foreground">@settings</p>
 
                 <SettingsGroup title="ref_points">
-                  <SettingsRow label="stochastic" value={uploadState.slots.settings.ref_points.stochastic} />
-                  <SettingsRow label="iterations"  value={uploadState.slots.settings.ref_points.iterations} />
-                  <SettingsRow label="time"        value={uploadState.slots.settings.ref_points.time} />
+                  <SettingsRow label="stochastic" value={s?.ref_points.stochastic ?? null} />
+                  <SettingsRow label="iterations"  value={s?.ref_points.iterations ?? null} />
+                  <SettingsRow label="time"        value={s?.ref_points.time ?? null} />
                 </SettingsGroup>
 
                 <SettingsGroup title="projection">
-                  <SettingsRow label="stochastic" value={uploadState.slots.settings.projection.stochastic} />
-                  <SettingsRow label="iterations"  value={uploadState.slots.settings.projection.iterations} />
-                  <SettingsRow label="time"        value={uploadState.slots.settings.projection.time} />
+                  <SettingsRow label="stochastic" value={s?.projection.stochastic ?? null} />
+                  <SettingsRow label="iterations"  value={s?.projection.iterations ?? null} />
+                  <SettingsRow label="time"        value={s?.projection.time ?? null} />
                 </SettingsGroup>
 
                 <SettingsGroup title="cv">
-                  <SettingsRow label="survivorship" value={uploadState.slots.settings.cv.survivorship} />
-                  <SettingsRow label="birth"        value={uploadState.slots.settings.cv.birth} />
-                  <SettingsRow label="numbers"      value={uploadState.slots.settings.cv.numbers} />
-                  <SettingsRow label="harvest_rate" value={uploadState.slots.settings.cv.harvest_rate} />
-                  <SettingsRow label="capture"      value={uploadState.slots.settings.cv.capture} />
-                  <SettingsRow label="rmax"         value={uploadState.slots.settings.cv.rmax} />
+                  <SettingsRow label="survivorship" value={s?.cv.survivorship ?? null} />
+                  <SettingsRow label="birth"        value={s?.cv.birth ?? null} />
+                  <SettingsRow label="numbers"      value={s?.cv.numbers ?? null} />
+                  <SettingsRow label="harvest_rate" value={s?.cv.harvest_rate ?? null} />
+                  <SettingsRow label="capture"      value={s?.cv.capture ?? null} />
+                  <SettingsRow label="rmax"         value={s?.cv.rmax ?? null} />
                 </SettingsGroup>
 
                 <SettingsGroup title="qn">
-                  <SettingsRow label="numbers lo" value={uploadState.slots.settings.qn.numbers_lo} />
-                  <SettingsRow label="numbers hi" value={uploadState.slots.settings.qn.numbers_hi} />
+                  <SettingsRow label="numbers lo" value={s?.qn.numbers_lo ?? null} />
+                  <SettingsRow label="numbers hi" value={s?.qn.numbers_hi ?? null} />
                 </SettingsGroup>
 
                 <SettingsGroup title="bias">
-                  <SettingsRow label="numbers"      value={uploadState.slots.settings.bias.numbers} />
-                  <SettingsRow label="harvest_rate" value={uploadState.slots.settings.bias.harvest_rate} />
-                  <SettingsRow label="capture"      value={uploadState.slots.settings.bias.capture} />
-                  <SettingsRow label="rmax"         value={uploadState.slots.settings.bias.rmax} />
+                  <SettingsRow label="numbers"      value={s?.bias.numbers ?? null} />
+                  <SettingsRow label="harvest_rate" value={s?.bias.harvest_rate ?? null} />
+                  <SettingsRow label="capture"      value={s?.bias.capture ?? null} />
+                  <SettingsRow label="rmax"         value={s?.bias.rmax ?? null} />
                 </SettingsGroup>
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
