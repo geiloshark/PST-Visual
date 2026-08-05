@@ -632,7 +632,8 @@ server <- function(input, output, session) {
         shape_log <- capture.output({
           obj <- shape(obj,
                        depletion   = target_val,
-                       stochastic  = input$om_target_stochastic)
+                       stochastic  = input$om_target_stochastic,
+                       time        = length(obj@time))
         })
         if (length(shape_log) > 0) add_log(paste(shape_log, collapse = "\n"))
         add_log("  Shape estimated: mean = ", round(mean(obj@shape, na.rm = TRUE), 4),
