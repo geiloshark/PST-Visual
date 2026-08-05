@@ -525,7 +525,7 @@ server <- function(input, output, session) {
           paste0("  shape: full vector preserved (", length(rv$om_shape_vec),
                  " values, mean = ", round(mean(rv$om_shape_vec, na.rm = TRUE), 4), ")\n")
         else ""
-        return(list(ok = TRUE, obj = obj,
+        return(list(ok = TRUE, obj = obj, source = "upload",
                     log = paste0("om object loaded from uploaded RDS.\n", shape_note)))
       }
 
@@ -662,8 +662,13 @@ server <- function(input, output, session) {
 
     if (isTRUE(result$ok)) {
       updateRadioButtons(session, "om_source", selected = "build")
-      showNotification("om object ready — switching to pdyn tab.", type = "message", duration = 4)
-      updateTabsetPanel(session, "main_tabs", selected = "2 · pdyn")
+      if (isTRUE(result$source == "upload")) {
+        # Stay on tab 1 so the user can review the pre-filled inputs
+        showNotification("om object loaded — review inputs below.", type = "message", duration = 5)
+      } else {
+        showNotification("om object ready — switching to pdyn tab.", type = "message", duration = 4)
+        updateTabsetPanel(session, "main_tabs", selected = "2 · pdyn")
+      }
     }
   })
 
