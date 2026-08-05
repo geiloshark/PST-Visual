@@ -463,9 +463,10 @@ ui <- fluidPage(
 server <- function(input, output, session) {
 
   rv <- reactiveValues(
-    om_obj     = NULL,
-    om_log     = "",
-    om_ok      = NA,
+    om_obj        = NULL,
+    om_log        = "",
+    om_ok         = NA,
+    om_shape_vec  = NULL,  # full shape vector from uploaded object; mean shown in UI
 
     pdyn_obj   = NULL,
     pdyn_log   = "",
@@ -483,6 +484,10 @@ server <- function(input, output, session) {
       if (!is(obj, "om")) stop("not an om object")
       .populate_basic_from_om(session, obj)
       .populate_pars_from_om(session, obj)
+      # Preserve the full shape vector; only the mean is shown in the UI box
+      if (length(obj@shape) > 0 && !all(is.na(obj@shape))) {
+        rv$om_shape_vec <- obj@shape
+      }
       showNotification(
         "Basic and Pars tabs populated from uploaded om object.",
         type = "message", duration = 4
@@ -504,7 +509,16 @@ server <- function(input, output, session) {
         req(input$om_upload)
         obj <- readRDS(input$om_upload$datapath)
         if (!is(obj, "om")) stop("Uploaded file does not contain an 'om' S4 object.")
-        return(list(ok = TRUE, obj = obj, log = "om object loaded from uploaded RDS.\n"))
+        # Preserve full shape vector (mean is shown in the UI box)
+        if (length(obj@shape) > 0 && !all(is.na(obj@shape))) {
+          rv$om_shape_vec <- obj@shape
+        }
+        shape_note <- if (!is.null(rv$om_shape_vec))
+          paste0("  shape: full vector preserved (", length(rv$om_shape_vec),
+                 " values, mean = ", round(mean(rv$om_shape_vec, na.rm = TRUE), 4), ")\n")
+        else ""
+        return(list(ok = TRUE, obj = obj,
+                    log = paste0("om object loaded from uploaded RDS.\n", shape_note)))
       }
 
       # ── Build path ──────────────────────────────────────────────────────────
