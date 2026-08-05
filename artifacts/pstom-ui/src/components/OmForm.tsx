@@ -5,12 +5,44 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Input, Label, Separator } from './ui/core';
 import { Layers, Loader2, CheckCircle2, Upload, X, AlertCircle } from 'lucide-react';
 
+interface OmSettings {
+  ref_points: { stochastic: boolean | null; iterations: number | null; time: number | null };
+  projection: { stochastic: boolean | null; iterations: number | null; time: number | null };
+  cv: { survivorship: number; birth: number; numbers: number; harvest_rate: number; capture: number; rmax: number };
+  qn: { numbers_lo: number; numbers_hi: number | null };
+  bias: { numbers: number; harvest_rate: number; capture: number; rmax: number };
+}
+
 interface OmSlots {
   ages: string;
   samples: number;
   time: number;
   shape: number | null;
   seeds: number | null;
+  settings: OmSettings | null;
+}
+
+/** Small key=value pair for the settings table */
+function SettingsRow({ label, value }: { label: string; value: string | number | boolean | null | undefined }) {
+  const display =
+    value === null || value === undefined ? '—'
+    : typeof value === 'boolean' ? (value ? 'true' : 'false')
+    : String(value);
+  return (
+    <div className="flex justify-between gap-2 py-0.5">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono text-right">{display}</span>
+    </div>
+  );
+}
+
+function SettingsGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{title}</p>
+      <div className="text-xs space-y-0">{children}</div>
+    </div>
+  );
 }
 
 type UploadState =
@@ -160,24 +192,67 @@ export function OmForm() {
         )}
 
         {uploadState.status === 'loaded' && (
-          <div className="mb-4 rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 px-4 py-3 text-sm text-blue-800 dark:text-blue-400 flex items-start gap-2">
-            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{uploadState.filename}</p>
-              <p className="text-xs mt-0.5 text-blue-600 dark:text-blue-500">Fields populated from object slots · ready for pdyn</p>
+          <div className="mb-4 space-y-2">
+            {/* ── Loaded banner ── */}
+            <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 px-4 py-3 text-sm text-blue-800 dark:text-blue-400 flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">{uploadState.filename}</p>
+                <p className="text-xs mt-0.5 text-blue-600 dark:text-blue-500">Fields populated from object slots · ready for pdyn</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('pdyn')}
+                  className="text-xs font-medium underline underline-offset-2 hover:no-underline"
+                >
+                  Go to pdyn
+                </button>
+                <button type="button" onClick={clearUpload} className="ml-2 hover:text-blue-600">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveTab('pdyn')}
-                className="text-xs font-medium underline underline-offset-2 hover:no-underline"
-              >
-                Go to pdyn
-              </button>
-              <button type="button" onClick={clearUpload} className="ml-2 hover:text-blue-600">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
+
+            {/* ── Settings panel ── */}
+            {uploadState.slots.settings && (
+              <div className="rounded-md border border-border bg-muted/30 px-4 py-3 space-y-3">
+                <p className="text-xs font-semibold text-foreground">@settings</p>
+
+                <SettingsGroup title="ref_points">
+                  <SettingsRow label="stochastic" value={uploadState.slots.settings.ref_points.stochastic} />
+                  <SettingsRow label="iterations"  value={uploadState.slots.settings.ref_points.iterations} />
+                  <SettingsRow label="time"        value={uploadState.slots.settings.ref_points.time} />
+                </SettingsGroup>
+
+                <SettingsGroup title="projection">
+                  <SettingsRow label="stochastic" value={uploadState.slots.settings.projection.stochastic} />
+                  <SettingsRow label="iterations"  value={uploadState.slots.settings.projection.iterations} />
+                  <SettingsRow label="time"        value={uploadState.slots.settings.projection.time} />
+                </SettingsGroup>
+
+                <SettingsGroup title="cv">
+                  <SettingsRow label="survivorship" value={uploadState.slots.settings.cv.survivorship} />
+                  <SettingsRow label="birth"        value={uploadState.slots.settings.cv.birth} />
+                  <SettingsRow label="numbers"      value={uploadState.slots.settings.cv.numbers} />
+                  <SettingsRow label="harvest_rate" value={uploadState.slots.settings.cv.harvest_rate} />
+                  <SettingsRow label="capture"      value={uploadState.slots.settings.cv.capture} />
+                  <SettingsRow label="rmax"         value={uploadState.slots.settings.cv.rmax} />
+                </SettingsGroup>
+
+                <SettingsGroup title="qn">
+                  <SettingsRow label="numbers lo" value={uploadState.slots.settings.qn.numbers_lo} />
+                  <SettingsRow label="numbers hi" value={uploadState.slots.settings.qn.numbers_hi} />
+                </SettingsGroup>
+
+                <SettingsGroup title="bias">
+                  <SettingsRow label="numbers"      value={uploadState.slots.settings.bias.numbers} />
+                  <SettingsRow label="harvest_rate" value={uploadState.slots.settings.bias.harvest_rate} />
+                  <SettingsRow label="capture"      value={uploadState.slots.settings.bias.capture} />
+                  <SettingsRow label="rmax"         value={uploadState.slots.settings.bias.rmax} />
+                </SettingsGroup>
+              </div>
+            )}
           </div>
         )}
 

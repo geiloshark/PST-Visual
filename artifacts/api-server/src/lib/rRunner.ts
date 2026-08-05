@@ -236,13 +236,24 @@ cat("OM_SUCCESS\\n")
   return { outputFileId, logs: output };
 }
 
-export async function inspectOmRds(fileId: string): Promise<{
+export interface OmSettings {
+  ref_points: { stochastic: boolean | null; iterations: number | null; time: number | null };
+  projection: { stochastic: boolean | null; iterations: number | null; time: number | null };
+  cv: { survivorship: number; birth: number; numbers: number; harvest_rate: number; capture: number; rmax: number };
+  qn: { numbers_lo: number; numbers_hi: number | null };
+  bias: { numbers: number; harvest_rate: number; capture: number; rmax: number };
+}
+
+export interface OmInspectResult {
   ages: string;
   samples: number;
   time: number;
   shape: number | null;
   seeds: number | null;
-}> {
+  settings: OmSettings | null;
+}
+
+export async function inspectOmRds(fileId: string): Promise<OmInspectResult> {
   const inputPath = getFilePath(fileId);
   if (!fs.existsSync(inputPath)) {
     throw new Error(`File not found: ${fileId}`);
@@ -290,6 +301,52 @@ cat(paste0("OM_SAMPLES:", samples_val, "\\n"))
 cat(paste0("OM_TIME:", time_val, "\\n"))
 if (!is.na(shape_val)) cat(paste0("OM_SHAPE:", shape_val, "\\n"))
 if (!is.na(seeds_val)) cat(paste0("OM_SEEDS:", seeds_val, "\\n"))
+
+# Settings — safely traverse nested list; return "NA" string for missing/NA values
+sg <- function(...) {
+  keys <- list(...)
+  tryCatch({
+    x <- obj@settings
+    for (k in keys) x <- x[[k]]
+    x
+  }, error = function(e) NA)
+}
+fmts <- function(x) {
+  if (is.null(x) || length(x) == 0) return("NA")
+  v <- x[1]
+  if (is.na(v)) "NA" else as.character(v)
+}
+fmtn <- function(x, digits = 6) {
+  if (is.null(x) || length(x) == 0) return("NA")
+  v <- x[1]
+  if (is.na(v)) "NA" else as.character(round(as.numeric(v), digits))
+}
+
+tryCatch({
+  cat(paste0("OM_S_RP_STOCH:", fmts(sg("ref_points", "stochastic")), "\\n"))
+  cat(paste0("OM_S_RP_ITER:",  fmts(sg("ref_points", "iterations")), "\\n"))
+  cat(paste0("OM_S_RP_TIME:",  fmts(sg("ref_points", "time")),       "\\n"))
+  cat(paste0("OM_S_PJ_STOCH:", fmts(sg("projection", "stochastic")), "\\n"))
+  cat(paste0("OM_S_PJ_ITER:",  fmts(sg("projection", "iterations")), "\\n"))
+  cat(paste0("OM_S_PJ_TIME:",  fmts(sg("projection", "time")),       "\\n"))
+  cat(paste0("OM_S_CV_SURV:",  fmtn(sg("cv", "survivorship")), "\\n"))
+  cat(paste0("OM_S_CV_BIRTH:", fmtn(sg("cv", "birth")),        "\\n"))
+  cat(paste0("OM_S_CV_NUM:",   fmtn(sg("cv", "numbers")),      "\\n"))
+  cat(paste0("OM_S_CV_HR:",    fmtn(sg("cv", "harvest_rate")), "\\n"))
+  cat(paste0("OM_S_CV_CAP:",   fmtn(sg("cv", "capture")),      "\\n"))
+  cat(paste0("OM_S_CV_RMAX:",  fmtn(sg("cv", "rmax")),         "\\n"))
+  qn_num <- sg("qn", "numbers")
+  cat(paste0("OM_S_QN_LO:", fmtn(qn_num[1]), "\\n"))
+  cat(paste0("OM_S_QN_HI:", fmtn(qn_num[2]), "\\n"))
+  cat(paste0("OM_S_BIAS_NUM:",  fmtn(sg("bias", "numbers")),      "\\n"))
+  cat(paste0("OM_S_BIAS_HR:",   fmtn(sg("bias", "harvest_rate")), "\\n"))
+  cat(paste0("OM_S_BIAS_CAP:",  fmtn(sg("bias", "capture")),      "\\n"))
+  cat(paste0("OM_S_BIAS_RMAX:", fmtn(sg("bias", "rmax")),         "\\n"))
+  cat("OM_SETTINGS_OK\\n")
+}, error = function(e) {
+  cat(paste0("OM_SETTINGS_ERROR:", conditionMessage(e), "\\n"))
+})
+
 cat("OM_INSPECT_SUCCESS\\n")
 `;
 
@@ -298,22 +355,70 @@ cat("OM_INSPECT_SUCCESS\\n")
     throw new Error(output || "R execution failed");
   }
 
-  const agesMatch   = output.match(/OM_AGES:(.+)/);
+  const agesMatch    = output.match(/OM_AGES:(.+)/);
   const samplesMatch = output.match(/OM_SAMPLES:(\d+)/);
-  const timeMatch   = output.match(/OM_TIME:(\d+)/);
-  const shapeMatch  = output.match(/OM_SHAPE:([\d.eE+-]+)/);
-  const seedsMatch  = output.match(/OM_SEEDS:(\d+)/);
+  const timeMatch    = output.match(/OM_TIME:(\d+)/);
+  const shapeMatch   = output.match(/OM_SHAPE:([\d.eE+-]+)/);
+  const seedsMatch   = output.match(/OM_SEEDS:(\d+)/);
 
   if (!agesMatch || !samplesMatch || !timeMatch) {
     throw new Error("Failed to parse om object slots from R output");
   }
 
+  // Parse settings if the R block succeeded
+  const parseVal = (key: string): string | null => {
+    const m = output.match(new RegExp(`${key}:([^\\n]*)`));
+    return m ? m[1].trim() : null;
+  };
+  const toNum  = (v: string | null): number      => v && v !== "NA" ? parseFloat(v) : 0;
+  const toNumN = (v: string | null): number | null => v && v !== "NA" ? parseFloat(v) : null;
+  const toBool = (v: string | null): boolean | null => {
+    if (!v || v === "NA") return null;
+    const lc = v.toLowerCase();
+    return lc === "true" ? true : lc === "false" ? false : null;
+  };
+
+  let settings: OmSettings | null = null;
+  if (output.includes("OM_SETTINGS_OK")) {
+    settings = {
+      ref_points: {
+        stochastic: toBool(parseVal("OM_S_RP_STOCH")),
+        iterations: toNumN(parseVal("OM_S_RP_ITER")),
+        time:       toNumN(parseVal("OM_S_RP_TIME")),
+      },
+      projection: {
+        stochastic: toBool(parseVal("OM_S_PJ_STOCH")),
+        iterations: toNumN(parseVal("OM_S_PJ_ITER")),
+        time:       toNumN(parseVal("OM_S_PJ_TIME")),
+      },
+      cv: {
+        survivorship: toNum(parseVal("OM_S_CV_SURV")),
+        birth:        toNum(parseVal("OM_S_CV_BIRTH")),
+        numbers:      toNum(parseVal("OM_S_CV_NUM")),
+        harvest_rate: toNum(parseVal("OM_S_CV_HR")),
+        capture:      toNum(parseVal("OM_S_CV_CAP")),
+        rmax:         toNum(parseVal("OM_S_CV_RMAX")),
+      },
+      qn: {
+        numbers_lo: toNum(parseVal("OM_S_QN_LO")),
+        numbers_hi: toNumN(parseVal("OM_S_QN_HI")),
+      },
+      bias: {
+        numbers:      toNum(parseVal("OM_S_BIAS_NUM")),
+        harvest_rate: toNum(parseVal("OM_S_BIAS_HR")),
+        capture:      toNum(parseVal("OM_S_BIAS_CAP")),
+        rmax:         toNum(parseVal("OM_S_BIAS_RMAX")),
+      },
+    };
+  }
+
   return {
-    ages:    agesMatch[1].trim(),
-    samples: parseInt(samplesMatch[1], 10),
-    time:    parseInt(timeMatch[1], 10),
-    shape:   shapeMatch  ? parseFloat(shapeMatch[1])  : null,
-    seeds:   seedsMatch  ? parseInt(seedsMatch[1], 10) : null,
+    ages:     agesMatch[1].trim(),
+    samples:  parseInt(samplesMatch[1], 10),
+    time:     parseInt(timeMatch[1], 10),
+    shape:    shapeMatch ? parseFloat(shapeMatch[1]) : null,
+    seeds:    seedsMatch ? parseInt(seedsMatch[1], 10) : null,
+    settings,
   };
 }
 
