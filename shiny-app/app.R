@@ -41,6 +41,43 @@ library(pstom)
   distribution(pars = pars_vec, density = dens, name = name)
 }
 
+# Format an integer ages vector as a compact R expression string.
+.ages_to_expr <- function(ages) {
+  ages <- sort(unique(as.integer(ages)))
+  # Detect simple 0:N contiguous sequence
+  if (length(ages) >= 2 && all(diff(ages) == 1L) && ages[1] == 0L) {
+    return(paste0("0:", ages[length(ages)]))
+  }
+  paste0("c(", paste(ages, collapse = ", "), ")")
+}
+
+# Populate Basic tab inputs from a loaded om object.
+.populate_basic_from_om <- function(session, obj) {
+
+  # Ages — format as compact R expression
+  if (length(obj@ages) > 0 && !all(is.na(obj@ages))) {
+    updateTextInput(session, "om_ages", value = .ages_to_expr(obj@ages))
+  }
+
+  # Samples
+  if (!is.na(obj@samples) && obj@samples > 0L) {
+    updateNumericInput(session, "om_samples", value = as.integer(obj@samples))
+  }
+
+  # Time — stored as 0:(n-1) vector; expose as number of years
+  if (length(obj@time) > 0 && !all(is.na(obj@time))) {
+    updateNumericInput(session, "om_time", value = length(obj@time))
+  }
+
+  # Shape — use mean of estimated values if present
+  if (length(obj@shape) > 0 && !all(is.na(obj@shape))) {
+    updateNumericInput(session, "om_shape",
+                       value = round(mean(obj@shape, na.rm = TRUE), 6))
+  } else {
+    updateNumericInput(session, "om_shape", value = NA)
+  }
+}
+
 # Populate Pars tab inputs from a loaded om object.
 # Called immediately when an RDS is uploaded so the user sees the values.
 # Works even while the Upload radio is active (inputs are in the DOM, just hidden).
@@ -444,9 +481,10 @@ server <- function(input, output, session) {
     tryCatch({
       obj <- readRDS(input$om_upload$datapath)
       if (!is(obj, "om")) stop("not an om object")
+      .populate_basic_from_om(session, obj)
       .populate_pars_from_om(session, obj)
       showNotification(
-        "Pars tab populated from uploaded om object.",
+        "Basic and Pars tabs populated from uploaded om object.",
         type = "message", duration = 4
       )
     }, error = function(e) {
