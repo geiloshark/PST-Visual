@@ -751,7 +751,6 @@ server <- function(input, output, session) {
     if (isTRUE(result$ok)) {
       if (isTRUE(result$source == "upload")) {
         # Stay on tab 1 so the user can review the pre-filled inputs
-        showNotification("om object loaded — review inputs below.", type = "message", duration = 5)
       } else {
         showNotification("om object ready — switching to pdyn tab.", type = "message", duration = 4)
         updateTabsetPanel(session, "main_tabs", selected = "2 · pdyn")
