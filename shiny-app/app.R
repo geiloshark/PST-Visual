@@ -381,9 +381,19 @@ ui <- fluidPage(
             h4("R Output"),
             div(class = "log-box", verbatimTextOutput("om_log")),
             br(),
-            h4("Values"),
-            div(style = "overflow-x: auto;",
-              tableOutput("om_values_tbl")
+            fluidRow(
+              column(6,
+                h4("Values"),
+                div(style = "overflow-x: auto;",
+                  tableOutput("om_values_tbl")
+                )
+              ),
+              column(6,
+                h4("Targets"),
+                div(style = "overflow-x: auto;",
+                  tableOutput("om_targets_tbl")
+                )
+              )
             )
           )
         )
@@ -482,6 +492,7 @@ server <- function(input, output, session) {
     om_ok         = NA,
     om_shape_vec  = NULL,  # full shape vector from uploaded object; mean shown in UI
     om_values_df  = NULL,  # tibble returned by values() after initialise
+    om_targets_df = NULL,  # data.frame returned by targets() after initialise
 
     pdyn_obj   = NULL,
     pdyn_log   = "",
@@ -514,9 +525,10 @@ server <- function(input, output, session) {
 
   # ── om ──────────────────────────────────────────────────────────────────────
   observeEvent(input$run_om, {
-    rv$om_ok        <- NA
-    rv$om_log       <- ""
-    rv$om_values_df <- NULL
+    rv$om_ok         <- NA
+    rv$om_log        <- ""
+    rv$om_values_df  <- NULL
+    rv$om_targets_df <- NULL
 
     result <- tryCatch({
 
@@ -558,13 +570,20 @@ server <- function(input, output, session) {
         # ── Values (upload) ────────────────────────────────────────────────────
         val_df <- values(obj, stochastic = FALSE, iterations = n_samp)
 
+        # ── Targets (upload) ───────────────────────────────────────────────────
+        tgt     <- targets(obj)
+        tgt_df  <- data.frame(sample       = tgt$captures$sample,
+                              captures     = tgt$captures$value,
+                              depletion    = tgt$depletion$value,
+                              harvest_rate = tgt$harvest_rate$value)
+
         summary_parts <- "rmax"
         if (!is.na(target_val)) summary_parts <- paste0(summary_parts, ", shape")
         summary_parts <- paste0(summary_parts, " and reference points estimated.")
         upload_log <- paste0(upload_log, summary_parts, "\n")
 
-        list(ok = TRUE, obj = obj, val_df = val_df, source = "upload",
-             log = upload_log)
+        list(ok = TRUE, obj = obj, val_df = val_df, tgt_df = tgt_df,
+             source = "upload", log = upload_log)
 
       } else {
 
@@ -701,13 +720,20 @@ server <- function(input, output, session) {
         # ── Values ─────────────────────────────────────────────────────────────
         val_df <- values(obj, stochastic = FALSE, iterations = n_samp)
 
+        # ── Targets ────────────────────────────────────────────────────────────
+        tgt    <- targets(obj)
+        tgt_df <- data.frame(sample       = tgt$captures$sample,
+                             captures     = tgt$captures$value,
+                             depletion    = tgt$depletion$value,
+                             harvest_rate = tgt$harvest_rate$value)
+
         # ── Summary message ────────────────────────────────────────────────────
         summary_parts <- "rmax"
         if (shape_estimated) summary_parts <- paste0(summary_parts, ", shape")
         summary_parts <- paste0(summary_parts, " and reference points estimated.")
         add_log("\n", summary_parts)
 
-        list(ok = TRUE, obj = obj, val_df = val_df,
+        list(ok = TRUE, obj = obj, val_df = val_df, tgt_df = tgt_df,
              log = paste(log_lines, collapse = "\n"))
 
       } # end if/else upload vs build
@@ -719,7 +745,8 @@ server <- function(input, output, session) {
     rv$om_obj       <- result$obj
     rv$om_log       <- result$log
     rv$om_ok        <- result$ok
-    rv$om_values_df <- result$val_df   # NULL on error path
+    rv$om_values_df  <- result$val_df   # NULL on error path
+    rv$om_targets_df <- result$tgt_df   # NULL on error path
 
     if (isTRUE(result$ok)) {
       if (isTRUE(result$source == "upload")) {
@@ -741,6 +768,10 @@ server <- function(input, output, session) {
 
   output$om_values_tbl <- renderTable({
     rv$om_values_df
+  }, digits = 4, striped = TRUE, hover = TRUE, bordered = TRUE)
+
+  output$om_targets_tbl <- renderTable({
+    rv$om_targets_df
   }, digits = 4, striped = TRUE, hover = TRUE, bordered = TRUE)
 
   output$dl_om_ui <- renderUI({
