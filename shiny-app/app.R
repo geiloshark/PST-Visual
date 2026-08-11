@@ -379,7 +379,12 @@ ui <- fluidPage(
             uiOutput("om_status_ui"),
             br(),
             h4("R Output"),
-            div(class = "log-box", verbatimTextOutput("om_log"))
+            div(class = "log-box", verbatimTextOutput("om_log")),
+            br(),
+            h4("Values"),
+            div(style = "overflow-x: auto;",
+              tableOutput("om_values_tbl")
+            )
           )
         )
       )
@@ -476,6 +481,7 @@ server <- function(input, output, session) {
     om_log        = "",
     om_ok         = NA,
     om_shape_vec  = NULL,  # full shape vector from uploaded object; mean shown in UI
+    om_values_df  = NULL,  # tibble returned by values() after initialise
 
     pdyn_obj   = NULL,
     pdyn_log   = "",
@@ -508,8 +514,9 @@ server <- function(input, output, session) {
 
   # ── om ──────────────────────────────────────────────────────────────────────
   observeEvent(input$run_om, {
-    rv$om_ok  <- NA
-    rv$om_log <- ""
+    rv$om_ok        <- NA
+    rv$om_log       <- ""
+    rv$om_values_df <- NULL
 
     result <- tryCatch({
 
@@ -522,12 +529,42 @@ server <- function(input, output, session) {
         if (length(obj@shape) > 0 && !all(is.na(obj@shape))) {
           rv$om_shape_vec <- obj@shape
         }
-        shape_note <- if (!is.null(rv$om_shape_vec))
-          paste0("  shape: full vector preserved (", length(rv$om_shape_vec),
-                 " values, mean = ", round(mean(rv$om_shape_vec, na.rm = TRUE), 4), ")\n")
-        else ""
-        list(ok = TRUE, obj = obj, source = "upload",
-             log = paste0("om object loaded from uploaded RDS.\n", shape_note))
+        upload_log <- paste0("om object loaded from uploaded RDS.\n")
+
+        eq_time  <- as.integer(input$om_shape_eq_time)
+        n_samp   <- as.integer(input$om_samples)
+
+        # ── Shape (upload) ─────────────────────────────────────────────────────
+        target_val <- input$om_target
+        if (!is.na(target_val)) {
+          if (target_val < 0.4 || target_val > 0.9)
+            stop("Target depletion must be between 0.4 and 0.9.")
+          shape_log <- capture.output({
+            obj <- shape(obj, depletion = target_val, stochastic = FALSE, time = eq_time)
+          })
+          rv$om_shape_vec <- obj@shape
+          updateNumericInput(session, "om_shape",
+                             value = round(mean(obj@shape, na.rm = TRUE), 4))
+          upload_log <- paste0(upload_log,
+            "  shape estimated (mean = ", round(mean(obj@shape, na.rm = TRUE), 4), ").\n")
+        }
+
+        # ── Reference points (upload) ──────────────────────────────────────────
+        rp_log <- capture.output({
+          obj <- rp(obj, stochastic = FALSE, time = eq_time, iterations = n_samp)
+        })
+        upload_log <- paste0(upload_log, "  Reference points estimated.\n")
+
+        # ── Values (upload) ────────────────────────────────────────────────────
+        val_df <- values(obj, stochastic = FALSE, iterations = n_samp)
+
+        summary_parts <- "rmax"
+        if (!is.na(target_val)) summary_parts <- paste0(summary_parts, ", shape")
+        summary_parts <- paste0(summary_parts, " and reference points estimated.")
+        upload_log <- paste0(upload_log, summary_parts, "\n")
+
+        list(ok = TRUE, obj = obj, val_df = val_df, source = "upload",
+             log = upload_log)
 
       } else {
 
@@ -631,28 +668,47 @@ server <- function(input, output, session) {
           }
         }
 
+        eq_time <- as.integer(input$om_shape_eq_time)
+        n_samp  <- as.integer(input$om_samples)
+
         # ── Shape via target depletion ─────────────────────────────────────────
         target_val <- input$om_target
+        shape_estimated <- FALSE
         if (!is.na(target_val)) {
           if (target_val < 0.4 || target_val > 0.9)
             stop("Target depletion must be between 0.4 and 0.9.")
-          eq_time <- as.integer(input$om_shape_eq_time)
           add_log("\nEstimating shape from target depletion = ", target_val,
                   " (stochastic = FALSE, equilibrium time = ", eq_time, ") via shape()…")
           add_log("  Note: requires s, l, b, m, v to be set in Pars tab.")
           shape_log <- capture.output({
-            obj <- shape(obj,
-                         depletion  = target_val,
-                         stochastic = FALSE,
-                         time       = eq_time)
+            obj <- shape(obj, depletion = target_val, stochastic = FALSE, time = eq_time)
           })
           if (length(shape_log) > 0) add_log(paste(shape_log, collapse = "\n"))
-          add_log("  Shape estimated: mean = ", round(mean(obj@shape, na.rm = TRUE), 4),
-                  ", stored in object@shape.")
+          shape_mean <- round(mean(obj@shape, na.rm = TRUE), 4)
+          add_log("  Shape estimated: mean = ", shape_mean, ".")
+          updateNumericInput(session, "om_shape", value = shape_mean)
+          shape_estimated <- TRUE
         }
 
-        add_log("\nom object ready.")
-        list(ok = TRUE, obj = obj, log = paste(log_lines, collapse = "\n"))
+        # ── Reference points ───────────────────────────────────────────────────
+        add_log("\nEstimating reference points via rp()…")
+        rp_log <- capture.output({
+          obj <- rp(obj, stochastic = FALSE, time = eq_time, iterations = n_samp)
+        })
+        if (length(rp_log) > 0) add_log(paste(rp_log, collapse = "\n"))
+        add_log("  Reference points estimated.")
+
+        # ── Values ─────────────────────────────────────────────────────────────
+        val_df <- values(obj, stochastic = FALSE, iterations = n_samp)
+
+        # ── Summary message ────────────────────────────────────────────────────
+        summary_parts <- "rmax"
+        if (shape_estimated) summary_parts <- paste0(summary_parts, ", shape")
+        summary_parts <- paste0(summary_parts, " and reference points estimated.")
+        add_log("\n", summary_parts)
+
+        list(ok = TRUE, obj = obj, val_df = val_df,
+             log = paste(log_lines, collapse = "\n"))
 
       } # end if/else upload vs build
 
@@ -660,9 +716,10 @@ server <- function(input, output, session) {
       list(ok = FALSE, obj = NULL, log = paste0("Error:\n", conditionMessage(e), "\n"))
     })
 
-    rv$om_obj <- result$obj
-    rv$om_log <- result$log
-    rv$om_ok  <- result$ok
+    rv$om_obj       <- result$obj
+    rv$om_log       <- result$log
+    rv$om_ok        <- result$ok
+    rv$om_values_df <- result$val_df   # NULL on error path
 
     if (isTRUE(result$ok)) {
       if (isTRUE(result$source == "upload")) {
@@ -681,6 +738,10 @@ server <- function(input, output, session) {
     span("✗ Error — see R Output below.", class = "status-err")
   })
   output$om_log <- renderText({ rv$om_log })
+
+  output$om_values_tbl <- renderTable({
+    rv$om_values_df
+  }, digits = 4, striped = TRUE, hover = TRUE, bordered = TRUE)
 
   output$dl_om_ui <- renderUI({
     if (is.null(rv$om_obj))
