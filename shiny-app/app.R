@@ -403,6 +403,19 @@ ui <- fluidPage(
             ),
             numericInput("pdyn_depletion", "Initial Depletion", value = 1.0,
                          min = 0, max = 1, step = 0.01),
+            fluidRow(
+              column(6,
+                numericInput("pdyn_o", "o — Age at observation",
+                             value = NA, min = 0, step = 1)
+              ),
+              column(6,
+                numericInput("pdyn_v", "v — Age at selectivity",
+                             value = NA, min = 0, step = 1)
+              )
+            ),
+            p(class = "helper-text",
+              "Pre-filled from tab 1. Override here to test different scenarios ",
+              "without changing the om object."),
             checkboxInput("pdyn_stochastic", "Stochastic", value = TRUE),
             checkboxInput("pdyn_use_rmax",   "Use Rmax",   value = TRUE),
             checkboxInput("pdyn_verbose",    "Verbose",    value = FALSE),
@@ -684,6 +697,19 @@ server <- function(input, output, session) {
     }
   )
 
+  # ── Sync pdyn o/v defaults whenever the om object changes ───────────────────
+  observeEvent(rv$om_obj, {
+    obj <- rv$om_obj
+    if (is.null(obj)) return()
+    # Extract Par 1 (location/mean) from each distribution if it has been set
+    if (!isTRUE(is.na(obj@pars$o)) && !is.null(obj@pars$o)) {
+      updateNumericInput(session, "pdyn_o", value = obj@pars$o@pars[1])
+    }
+    if (!isTRUE(is.na(obj@pars$v)) && !is.null(obj@pars$v)) {
+      updateNumericInput(session, "pdyn_v", value = obj@pars$v@pars[1])
+    }
+  })
+
   # ── pdyn ────────────────────────────────────────────────────────────────────
   observeEvent(input$run_pdyn, {
     rv$pdyn_ok  <- NA
@@ -696,8 +722,19 @@ server <- function(input, output, session) {
     }
 
     result <- tryCatch({
+      # Apply o/v overrides on a copy of the om object so the original is
+      # unchanged.  Uses the same unspecified distribution as the Pars tab.
+      pdyn_om <- rv$om_obj
+      ov_overrides <- list()
+      if (!is.na(input$pdyn_o))
+        ov_overrides$o <- .build_dist(input$pdyn_o, NA, "unspecified", "age at observation")
+      if (!is.na(input$pdyn_v))
+        ov_overrides$v <- .build_dist(input$pdyn_v, NA, "unspecified", "age at selectivity")
+      if (length(ov_overrides) > 0)
+        pdyn_om <- load_pars(pdyn_om, ov_overrides)
+
       pdyn_args <- list(
-        object      = rv$om_obj,
+        object      = pdyn_om,
         stochastic  = input$pdyn_stochastic,
         verbose     = input$pdyn_verbose,
         use_rmax    = input$pdyn_use_rmax
