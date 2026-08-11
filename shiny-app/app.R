@@ -500,8 +500,9 @@ server <- function(input, output, session) {
 
     result <- tryCatch({
 
-      # ── Upload path ─────────────────────────────────────────────────────────
       if (!is.null(input$om_upload)) {
+
+        # ── Upload path ────────────────────────────────────────────────────────
         obj <- readRDS(input$om_upload$datapath)
         if (!is(obj, "om")) stop("Uploaded file does not contain an 'om' S4 object.")
         # Preserve full shape vector (mean is shown in the UI box)
@@ -512,132 +513,135 @@ server <- function(input, output, session) {
           paste0("  shape: full vector preserved (", length(rv$om_shape_vec),
                  " values, mean = ", round(mean(rv$om_shape_vec, na.rm = TRUE), 4), ")\n")
         else ""
-        return(list(ok = TRUE, obj = obj, source = "upload",
-                    log = paste0("om object loaded from uploaded RDS.\n", shape_note)))
-      }
+        list(ok = TRUE, obj = obj, source = "upload",
+             log = paste0("om object loaded from uploaded RDS.\n", shape_note))
 
-      # ── Build path ──────────────────────────────────────────────────────────
-      log_lines <- character(0)
-      add_log   <- function(...) log_lines <<- c(log_lines, paste0(...))
+      } else {
 
-      # Basic arguments
-      ages_expr <- trimws(input$om_ages)
-      if (ages_expr == "") stop("Ages field is required.")
-      ages_val <- eval(parse(text = ages_expr))
+        # ── Build path ──────────────────────────────────────────────────────────
+        log_lines <- character(0)
+        add_log   <- function(...) log_lines <<- c(log_lines, paste0(...))
 
-      om_args <- list(
-        ages    = ages_val,
-        samples = as.integer(input$om_samples),
-        time    = input$om_time
-      )
-      if (!is.na(input$om_shape)) om_args$shape <- input$om_shape
-      if (!is.na(input$om_seed))  om_args$seeds <- as.integer(input$om_seed)
+        # Basic arguments
+        ages_expr <- trimws(input$om_ages)
+        if (ages_expr == "") stop("Ages field is required.")
+        ages_val <- eval(parse(text = ages_expr))
 
-      add_log("Running om()…")
-      obj <- do.call(om, om_args)
-      add_log("om() created successfully.")
+        om_args <- list(
+          ages    = ages_val,
+          samples = as.integer(input$om_samples),
+          time    = input$om_time
+        )
+        if (!is.na(input$om_shape)) om_args$shape <- input$om_shape
+        if (!is.na(input$om_seed))  om_args$seeds <- as.integer(input$om_seed)
 
-      # ── Settings: CV ────────────────────────────────────────────────────────
-      cv_vals <- list(
-        survivorship = input$cv_survivorship,
-        birth        = input$cv_birth,
-        numbers      = input$cv_numbers,
-        harvest_rate = input$cv_harvest_rate,
-        capture      = input$cv_capture,
-        rmax         = input$cv_rmax
-      )
-      # Only call load_cvs if any differ from default (0)
-      if (any(unlist(cv_vals) != 0)) {
-        add_log("Applying CVs via load_cvs()…")
-        obj <- load_cvs(obj, cv_vals)
-        add_log("  CVs applied.")
-      }
+        add_log("Running om()…")
+        obj <- do.call(om, om_args)
+        add_log("om() created successfully.")
 
-      # ── Settings: Bias ──────────────────────────────────────────────────────
-      bias_vals <- list(
-        numbers      = input$bias_numbers,
-        harvest_rate = input$bias_harvest_rate,
-        capture      = input$bias_capture,
-        rmax         = input$bias_rmax
-      )
-      if (any(unlist(bias_vals) != 1)) {
-        add_log("Applying bias via load_bias()…")
-        obj <- load_bias(obj, bias_vals)
-        add_log("  Bias applied.")
-      }
-
-      # ── Settings: Quantiles ─────────────────────────────────────────────────
-      qn_lo <- input$qn_numbers_lo
-      qn_hi <- input$qn_numbers_hi
-      if (!is.na(qn_lo) || !is.na(qn_hi)) {
-        qn_lo <- if (is.na(qn_lo)) 0 else qn_lo
-        add_log("Applying quantiles via load_quantiles()…")
-        obj <- load_quantiles(obj, list(numbers = c(qn_lo, qn_hi)))
-        add_log("  Quantiles applied.")
-      }
-
-      # ── Pars ────────────────────────────────────────────────────────────────
-      par_map <- list(
-        s = list(prefix = "par_s", name = "adult female survivorship"),
-        l = list(prefix = "par_l", name = "age-zero survivorship multiplier"),
-        b = list(prefix = "par_b", name = "annual births per adult female"),
-        m = list(prefix = "par_m", name = "age at female maturity"),
-        o = list(prefix = "par_o", name = "age at observation"),
-        v = list(prefix = "par_v", name = "age at selectivity"),
-        K = list(prefix = "par_K", name = "carrying capacity")
-      )
-
-      pars_to_load <- list()
-      for (par_name in names(par_map)) {
-        info   <- par_map[[par_name]]
-        p1_id  <- paste0(info$prefix, "_p1")
-        p2_id  <- paste0(info$prefix, "_p2")
-        dn_id  <- paste0(info$prefix, "_dens")
-        dist   <- .build_dist(input[[p1_id]], input[[p2_id]], input[[dn_id]], name = info$name)
-        if (!is.null(dist)) {
-          pars_to_load[[par_name]] <- dist
-          add_log("  Par '", par_name, "' (", info$name, ") loaded.")
+        # ── Settings: CV ──────────────────────────────────────────────────────
+        cv_vals <- list(
+          survivorship = input$cv_survivorship,
+          birth        = input$cv_birth,
+          numbers      = input$cv_numbers,
+          harvest_rate = input$cv_harvest_rate,
+          capture      = input$cv_capture,
+          rmax         = input$cv_rmax
+        )
+        # Only call load_cvs if any differ from default (0)
+        if (any(unlist(cv_vals) != 0)) {
+          add_log("Applying CVs via load_cvs()…")
+          obj <- load_cvs(obj, cv_vals)
+          add_log("  CVs applied.")
         }
-      }
 
-      if (length(pars_to_load) > 0) {
-        add_log("Applying pars via load_pars()…")
-        obj <- load_pars(obj, pars_to_load)
-        add_log("  Pars applied.")
-
-        # When s, l, b and m are all supplied, load_pars() calculates r
-        # automatically.  Follow up with load_rmax() (no value arg) so that
-        # rmax is derived from r — the user cannot set rmax directly.
-        slbm_provided <- all(c("s", "l", "b", "m") %in% names(pars_to_load))
-        if (slbm_provided) {
-          add_log("  s, l, b, m all provided — deriving rmax from r via load_rmax()…")
-          obj <- load_rmax(obj)   # uses object@pars$r calculated by load_pars
-          add_log("  rmax derived and loaded.")
+        # ── Settings: Bias ────────────────────────────────────────────────────
+        bias_vals <- list(
+          numbers      = input$bias_numbers,
+          harvest_rate = input$bias_harvest_rate,
+          capture      = input$bias_capture,
+          rmax         = input$bias_rmax
+        )
+        if (any(unlist(bias_vals) != 1)) {
+          add_log("Applying bias via load_bias()…")
+          obj <- load_bias(obj, bias_vals)
+          add_log("  Bias applied.")
         }
-      }
 
-      # ── Shape via target depletion ──────────────────────────────────────────
-      target_val <- input$om_target
-      if (!is.na(target_val)) {
-        if (target_val < 0.4 || target_val > 0.9)
-          stop("Target depletion must be between 0.4 and 0.9.")
-        eq_time <- as.integer(input$om_shape_eq_time)
-        add_log("\nEstimating shape from target depletion = ", target_val,
-                " (stochastic = FALSE, equilibrium time = ", eq_time, ") via shape()…")
-        add_log("  Note: requires s, l, b, m, v to be set in Pars tab.")
-        shape_log <- capture.output({
-          obj <- shape(obj,
-                       depletion  = target_val,
-                       stochastic = FALSE,
-                       time       = eq_time)
-        })
-        if (length(shape_log) > 0) add_log(paste(shape_log, collapse = "\n"))
-        add_log("  Shape estimated: mean = ", round(mean(obj@shape, na.rm = TRUE), 4),
-                ", stored in object@shape.")
-      }
+        # ── Settings: Quantiles ───────────────────────────────────────────────
+        qn_lo <- input$qn_numbers_lo
+        qn_hi <- input$qn_numbers_hi
+        if (!is.na(qn_lo) || !is.na(qn_hi)) {
+          qn_lo <- if (is.na(qn_lo)) 0 else qn_lo
+          add_log("Applying quantiles via load_quantiles()…")
+          obj <- load_quantiles(obj, list(numbers = c(qn_lo, qn_hi)))
+          add_log("  Quantiles applied.")
+        }
 
-      add_log("\nom object ready.")
-      list(ok = TRUE, obj = obj, log = paste(log_lines, collapse = "\n"))
+        # ── Pars ──────────────────────────────────────────────────────────────
+        par_map <- list(
+          s = list(prefix = "par_s", name = "adult female survivorship"),
+          l = list(prefix = "par_l", name = "age-zero survivorship multiplier"),
+          b = list(prefix = "par_b", name = "annual births per adult female"),
+          m = list(prefix = "par_m", name = "age at female maturity"),
+          o = list(prefix = "par_o", name = "age at observation"),
+          v = list(prefix = "par_v", name = "age at selectivity"),
+          K = list(prefix = "par_K", name = "carrying capacity")
+        )
+
+        pars_to_load <- list()
+        for (par_name in names(par_map)) {
+          info   <- par_map[[par_name]]
+          p1_id  <- paste0(info$prefix, "_p1")
+          p2_id  <- paste0(info$prefix, "_p2")
+          dn_id  <- paste0(info$prefix, "_dens")
+          dist   <- .build_dist(input[[p1_id]], input[[p2_id]], input[[dn_id]], name = info$name)
+          if (!is.null(dist)) {
+            pars_to_load[[par_name]] <- dist
+            add_log("  Par '", par_name, "' (", info$name, ") loaded.")
+          }
+        }
+
+        if (length(pars_to_load) > 0) {
+          add_log("Applying pars via load_pars()…")
+          obj <- load_pars(obj, pars_to_load)
+          add_log("  Pars applied.")
+
+          # When s, l, b and m are all supplied, load_pars() calculates r
+          # automatically.  Follow up with load_rmax() (no value arg) so that
+          # rmax is derived from r — the user cannot set rmax directly.
+          slbm_provided <- all(c("s", "l", "b", "m") %in% names(pars_to_load))
+          if (slbm_provided) {
+            add_log("  s, l, b, m all provided — deriving rmax from r via load_rmax()…")
+            obj <- load_rmax(obj)   # uses object@pars$r calculated by load_pars
+            add_log("  rmax derived and loaded.")
+          }
+        }
+
+        # ── Shape via target depletion ─────────────────────────────────────────
+        target_val <- input$om_target
+        if (!is.na(target_val)) {
+          if (target_val < 0.4 || target_val > 0.9)
+            stop("Target depletion must be between 0.4 and 0.9.")
+          eq_time <- as.integer(input$om_shape_eq_time)
+          add_log("\nEstimating shape from target depletion = ", target_val,
+                  " (stochastic = FALSE, equilibrium time = ", eq_time, ") via shape()…")
+          add_log("  Note: requires s, l, b, m, v to be set in Pars tab.")
+          shape_log <- capture.output({
+            obj <- shape(obj,
+                         depletion  = target_val,
+                         stochastic = FALSE,
+                         time       = eq_time)
+          })
+          if (length(shape_log) > 0) add_log(paste(shape_log, collapse = "\n"))
+          add_log("  Shape estimated: mean = ", round(mean(obj@shape, na.rm = TRUE), 4),
+                  ", stored in object@shape.")
+        }
+
+        add_log("\nom object ready.")
+        list(ok = TRUE, obj = obj, log = paste(log_lines, collapse = "\n"))
+
+      } # end if/else upload vs build
 
     }, error = function(e) {
       list(ok = FALSE, obj = NULL, log = paste0("Error:\n", conditionMessage(e), "\n"))
