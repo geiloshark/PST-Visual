@@ -546,6 +546,10 @@ server <- function(input, output, session) {
         eq_time  <- as.integer(input$om_shape_eq_time)
         n_samp   <- as.integer(input$om_samples)
 
+        # ── Samples (upload) ───────────────────────────────────────────────────
+        samples(obj) <- n_samp
+        upload_log <- paste0(upload_log, "  samples set to ", n_samp, ".\n")
+
         # ── Shape (upload) ─────────────────────────────────────────────────────
         target_val <- input$om_target
         if (!is.na(target_val)) {
@@ -592,13 +596,14 @@ server <- function(input, output, session) {
         add_log   <- function(...) log_lines <<- c(log_lines, paste0(...))
 
         # Basic arguments
+        n_samp    <- as.integer(input$om_samples)
         ages_expr <- trimws(input$om_ages)
         if (ages_expr == "") stop("Ages field is required.")
         ages_val <- eval(parse(text = ages_expr))
 
         om_args <- list(
           ages    = ages_val,
-          samples = as.integer(input$om_samples),
+          samples = n_samp,
           time    = input$om_time
         )
         if (!is.na(input$om_shape)) om_args$shape <- input$om_shape
@@ -607,6 +612,10 @@ server <- function(input, output, session) {
         add_log("Running om()…")
         obj <- do.call(om, om_args)
         add_log("om() created successfully.")
+
+        # ── Samples ────────────────────────────────────────────────────────────
+        samples(obj) <- n_samp
+        add_log("  samples set to ", n_samp, ".")
 
         # ── Settings: CV ──────────────────────────────────────────────────────
         cv_vals <- list(
@@ -688,7 +697,6 @@ server <- function(input, output, session) {
         }
 
         eq_time <- as.integer(input$om_shape_eq_time)
-        n_samp  <- as.integer(input$om_samples)
 
         # ── Shape via target depletion ─────────────────────────────────────────
         target_val <- input$om_target
