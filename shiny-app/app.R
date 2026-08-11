@@ -366,7 +366,7 @@ ui <- fluidPage(
               ),  # inner-tabs div
 
             hr(),
-            actionButton("run_om", "Initialise / Load om", class = "btn-primary btn-block",
+            actionButton("run_om", "Initialise", class = "btn-primary btn-block",
                          icon = icon("play")),
             br(),
             uiOutput("dl_om_ui")
