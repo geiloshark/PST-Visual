@@ -731,7 +731,7 @@ server <- function(input, output, session) {
       if (!is.na(input$pdyn_v))
         ov_overrides$v <- .build_dist(input$pdyn_v, NA, "unspecified", "age at selectivity")
       if (length(ov_overrides) > 0)
-        pdyn_om <- load_pars(pdyn_om, ov_overrides)
+        pdyn_om <- update_pars(pdyn_om, ov_overrides)
 
       pdyn_args <- list(
         object      = pdyn_om,
