@@ -193,29 +193,18 @@ ui <- fluidPage(
           wellPanel(
             h4("om object"),
 
-            # Source toggle
-            radioButtons("om_source", label = NULL,
-              choices = list(
-                "Build from inputs" = "build",
-                "Upload existing RDS" = "upload"
-              ),
-              selected = "build"
-            ),
+            # ── Upload (always visible) ───────────────────────────────────────
+            fileInput("om_upload", label = NULL,
+                      accept = c(".rds", ".RDS"),
+                      buttonLabel = "Browse…",
+                      placeholder = "Optional — upload existing om RDS"),
+            p(class = "helper-text",
+              "Upload a saved ", code("om"), " object to pre-fill the inputs below. ",
+              "If no file is selected, the object is built from the inputs."),
 
-            # ── Upload path ──────────────────────────────────────────────────
-            conditionalPanel("input.om_source == 'upload'",
-              fileInput("om_upload", label = NULL,
-                        accept = c(".rds", ".RDS"),
-                        buttonLabel = "Browse…",
-                        placeholder = "Select om RDS file"),
-              p(class = "helper-text", "File must contain a saved ", code("om"), " S4 object.")
-            ),
-
-            # ── Build path ───────────────────────────────────────────────────
-            conditionalPanel("input.om_source == 'build'",
-
-              div(class = "inner-tabs",
-                tabsetPanel(
+            # ── Inputs (always visible) ───────────────────────────────────────
+            div(class = "inner-tabs",
+              tabsetPanel(
 
                   # ─── Basic ──────────────────────────────────────────────
                   tabPanel("Basic",
@@ -374,8 +363,7 @@ ui <- fluidPage(
                                  "Initial carrying capacity (default distribution = 1)", "normal")
                   )
                 ) # inner tabsetPanel
-              )   # inner-tabs div
-            ),    # conditionalPanel build
+              ),  # inner-tabs div
 
             hr(),
             actionButton("run_om", "Initialise / Load om", class = "btn-primary btn-block",
@@ -513,8 +501,7 @@ server <- function(input, output, session) {
     result <- tryCatch({
 
       # ── Upload path ─────────────────────────────────────────────────────────
-      if (input$om_source == "upload") {
-        req(input$om_upload)
+      if (!is.null(input$om_upload)) {
         obj <- readRDS(input$om_upload$datapath)
         if (!is(obj, "om")) stop("Uploaded file does not contain an 'om' S4 object.")
         # Preserve full shape vector (mean is shown in the UI box)
@@ -661,7 +648,6 @@ server <- function(input, output, session) {
     rv$om_ok  <- result$ok
 
     if (isTRUE(result$ok)) {
-      updateRadioButtons(session, "om_source", selected = "build")
       if (isTRUE(result$source == "upload")) {
         # Stay on tab 1 so the user can review the pre-filled inputs
         showNotification("om object loaded — review inputs below.", type = "message", duration = 5)
